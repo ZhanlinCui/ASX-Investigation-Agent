@@ -386,6 +386,9 @@ class CalibrationMetadata(BaseModel):
     confidence_rule_version: str | None = None
     created_at: datetime | None = None
     creation_commit: str | None = Field(default=None, pattern=r"^[0-9a-f]{7,64}$")
+    artifact_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    reviewed_by: str | None = Field(default=None, min_length=1, max_length=160)
+    reviewed_at: datetime | None = None
     bands: dict[str, BandCalibrationMetadata] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -403,6 +406,13 @@ class CalibrationMetadata(BaseModel):
             raise ValueError(
                 "measured calibration metadata requires corpus, rule and creation provenance"
             )
+        review_fields = (self.artifact_hash, self.reviewed_by, self.reviewed_at)
+        if any(value is not None for value in review_fields) and not all(
+            value is not None for value in review_fields
+        ):
+            raise ValueError("reviewed calibration metadata requires complete review provenance")
+        if self.reviewed_at is not None and self.reviewed_at.tzinfo is None:
+            raise ValueError("reviewed_at must include a timezone")
         return self
 
 

@@ -13,7 +13,12 @@ from asx_investigator.evaluation.bundles import (
     FrozenBundleError,
     load_frozen_gold_corpus,
 )
-from asx_investigator.evaluation.gold import execute_gold_corpus, run_external_gold
+from asx_investigator.evaluation.gold import (
+    build_development_calibration_records,
+    execute_gold_corpus,
+    run_external_gold,
+)
+from asx_investigator.evaluation.models import GoldExecutionReport
 from tests.unit.evaluation.test_bundles import _bind_metadata_artifact, write_bundle
 
 
@@ -103,6 +108,11 @@ async def test_gold_runner_executes_a_frozen_bundle_not_a_prebuilt_report(
         "ledger_reproducibility",
         "calibration_metadata",
     } <= {check.name for check in result.cases[0].evaluation.checks}
+    records = build_development_calibration_records(
+        result,
+        material_errors={"gold-01": False},
+    )
+    assert records[0].case_id == "gold-01"
 
 
 async def test_missing_external_holdout_is_not_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,6 +121,18 @@ async def test_missing_external_holdout_is_not_run(monkeypatch: pytest.MonkeyPat
     result = await run_external_gold("holdout")
 
     assert result.status == "NOT_RUN"
+
+
+def test_failed_development_execution_cannot_form_a_calibration_artifact() -> None:
+    with pytest.raises(ValueError, match="passed"):
+        build_development_calibration_records(
+            GoldExecutionReport(
+                corpus="development",
+                status="FAIL",
+                errors=["gold-01: provider failure"],
+            ),
+            material_errors={},
+        )
 
 
 def test_development_gold_preserves_its_adjudicated_expected_outcome(

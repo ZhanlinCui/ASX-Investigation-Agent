@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from asx_investigator.domain.models import InvestigationReport
 
@@ -48,6 +48,8 @@ class CaseEvaluation(BaseModel):
     raw_counts: dict[str, int]
     latency_ms: int
     estimated_cost_aud: float
+    confidence_band: Literal["LOW", "MEDIUM", "HIGH"] | None = None
+    abstention_policy: Literal["REQUIRED", "ALLOWED", "FORBIDDEN"] | None = None
 
 
 class EvaluationReport(BaseModel):
@@ -58,6 +60,38 @@ class EvaluationReport(BaseModel):
     proportions: dict[str, float]
     cases: list[CaseEvaluation] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+
+
+class ReleaseGateReport(BaseModel):
+    """A deterministic release decision with unambiguous denominators."""
+
+    status: Literal["PASS", "FAIL", "NOT_RUN"]
+    raw_counts: dict[str, dict[str, int]]
+    denominators: dict[str, int]
+    proportions: dict[str, float]
+    failures: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_raw_counts(self) -> ReleaseGateReport:
+        if self.status == "NOT_RUN":
+            if self.raw_counts or self.denominators or self.proportions:
+                raise ValueError("NOT_RUN release gates cannot contain evaluated counts")
+            return self
+        if set(self.raw_counts) != set(self.denominators) or set(self.raw_counts) != set(
+            self.proportions
+        ):
+            raise ValueError("release-gate counts, denominators and proportions must align")
+        for name, count in self.raw_counts.items():
+            if set(count) != {"passed", "failed"}:
+                raise ValueError("release-gate raw counts require passed and failed values")
+            if count["passed"] < 0 or count["failed"] < 0:
+                raise ValueError("release-gate raw counts cannot be negative")
+            if self.denominators[name] != count["passed"] + count["failed"]:
+                raise ValueError("release-gate denominator must match its raw counts")
+            expected = count["passed"] / self.denominators[name] if self.denominators[name] else 0.0
+            if self.proportions[name] != expected:
+                raise ValueError("release-gate proportion must match its raw counts")
+        return self
 
 
 class GoldCaseManifest(BaseModel):

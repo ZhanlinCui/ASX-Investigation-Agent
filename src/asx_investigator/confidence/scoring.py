@@ -9,6 +9,8 @@ from asx_investigator.domain.models import (
     EvidenceItem,
 )
 
+ACTIVE_CONFIDENCE_RULE_VERSION = "confidence-v1"
+
 
 @dataclass(frozen=True)
 class ConfidenceFeatures:
@@ -68,6 +70,7 @@ def score_confidence(features: ConfidenceFeatures) -> ConfidenceAssessment:
     return ConfidenceAssessment(
         score=score,
         band=band,
+        rule_version=ACTIVE_CONFIDENCE_RULE_VERSION,
         positive_factors=positive_factors,
         negative_factors=caps.copy(),
         applied_caps=caps,

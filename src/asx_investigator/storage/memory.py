@@ -15,6 +15,7 @@ from uuid import uuid4
 import aiosqlite
 from pydantic import ValidationError
 
+from asx_investigator.confidence.calibration import ReviewedCalibrationArtifact
 from asx_investigator.domain.models import IssuerReferenceFact, SharedMemoryEntry
 
 ALLOWED_MEMORY_TYPES = {
@@ -273,6 +274,10 @@ class SharedMemoryRepository:
     ) -> SharedMemoryEntry | IssuerReferenceFact:
         """Store a field-allowlisted non-case record for controlled callers."""
 
+        if memory_type == "CALIBRATION_ARTIFACT":
+            raise MemoryAdmissionError(
+                "Calibration artifacts require a reviewed artifact admission"
+            )
         self.policy.validate(memory_type, payload)
         if memory_type == "ISSUER_REFERENCE":
             try:
@@ -383,28 +388,30 @@ class SharedMemoryRepository:
     async def record_calibration_artifact(
         self,
         *,
-        calibration_version: str,
-        rule_version: str,
-        artifact_hash: str,
+        artifact: ReviewedCalibrationArtifact,
         rule_hash: str,
         valid_from: datetime,
         valid_until: datetime,
-        source_url: str | None = None,
     ) -> SharedMemoryEntry:
-        """Store only immutable calibration provenance, never case labels or results."""
+        """Store reviewed immutable provenance, never labels or calibration outcomes."""
+
+        if not isinstance(artifact, ReviewedCalibrationArtifact):
+            raise MemoryAdmissionError("Calibration artifacts must be reviewed before admission")
 
         payload: dict[str, object] = {
-            "calibration_version": calibration_version,
-            "rule_version": rule_version,
-            "artifact_hash": artifact_hash,
+            "calibration_version": artifact.artifact.artifact_version,
+            "rule_version": artifact.artifact.confidence_rule_version,
+            "artifact_hash": artifact.artifact.artifact_hash,
             "rule_hash": rule_hash,
             "valid_from": valid_from,
             "valid_until": valid_until,
         }
-        if source_url is not None:
-            payload["source_url"] = source_url
-        entry = await self.put("CALIBRATION_ARTIFACT", payload)
-        assert isinstance(entry, SharedMemoryEntry)
+        self.policy.validate("CALIBRATION_ARTIFACT", payload)
+        try:
+            entry = self._internal_entry("CALIBRATION_ARTIFACT", payload, datetime.now(UTC))
+        except (TypeError, ValidationError, ValueError) as error:
+            raise MemoryAdmissionError("Reviewed calibration artifact is not valid") from error
+        await self._insert(entry)
         return entry
 
     async def revoke(self, entry_id: str) -> None:

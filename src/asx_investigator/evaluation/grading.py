@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from hashlib import sha256
 
+from asx_investigator.confidence.calibration import RELEASE_CHECK_NAMES, CalibrationRecord
 from asx_investigator.domain.models import (
     ClaimType,
     EvidenceRole,
@@ -12,6 +13,7 @@ from asx_investigator.evaluation.models import (
     CaseEvaluation,
     EvalCaseManifest,
     GraderCheck,
+    ReleaseGateReport,
 )
 from asx_investigator.investigation.assertions import normalized_hash
 from asx_investigator.investigation.claim_compiler import (
@@ -103,6 +105,7 @@ def grade_report(
     assertion_integrity_ok, assertion_detail = _assertion_integrity(report, material)
     claim_compilation_ok, compilation_detail = _claim_compilation(report, material)
     calibration_ok, calibration_detail = _calibration_metadata(report)
+    confidence_caps_ok, confidence_caps_detail = _confidence_caps(report)
     checks = [
         GraderCheck(
             name="expected_outcome",
@@ -173,6 +176,11 @@ def grade_report(
             detail=f"band={report.confidence.band}",
         ),
         GraderCheck(
+            name="confidence_caps",
+            passed=confidence_caps_ok,
+            detail=confidence_caps_detail,
+        ),
+        GraderCheck(
             name="assertion_integrity",
             passed=assertion_integrity_ok,
             detail=assertion_detail,
@@ -218,6 +226,84 @@ def grade_report(
         raw_counts={"passed": passed_count, "failed": len(checks) - passed_count},
         latency_ms=latency_ms,
         estimated_cost_aud=estimated_cost_aud,
+        confidence_band=report.confidence.band,
+        abstention_policy=manifest.abstention_policy,
+    )
+
+
+def evaluate_release_gates(
+    records: list[CalibrationRecord],
+    *,
+    external_corpus_executed: bool = True,
+) -> ReleaseGateReport:
+    """Apply deterministic Phase 3 release rules to explicit evaluation records.
+
+    A record is a validated external evaluation input. If that corpus did not
+    execute, this function deliberately returns ``NOT_RUN`` rather than using
+    local policy sentinels to manufacture a release pass.
+    """
+
+    if not external_corpus_executed or not records:
+        return ReleaseGateReport(status="NOT_RUN", raw_counts={}, denominators={}, proportions={})
+
+    safety_metrics = (
+        "lookahead",
+        "session",
+        "citation",
+        "provider_semantics",
+        "reproducibility",
+        "confidence_caps",
+    )
+    behavioral_metrics = (
+        "top_1",
+        "top_2",
+        "required_abstention",
+        "false_abstention",
+    )
+    raw_counts: dict[str, dict[str, int]] = {}
+    denominators: dict[str, int] = {}
+    proportions: dict[str, float] = {}
+    failures: list[str] = []
+    for metric in (*safety_metrics, *behavioral_metrics):
+        values = [record.checks[metric] for record in records if metric in record.checks]
+        raw_counts[metric] = {"passed": sum(values), "failed": len(values) - sum(values)}
+        denominators[metric] = len(values)
+        proportions[metric] = sum(values) / len(values) if values else 0.0
+
+    high_records = [record for record in records if record.confidence_band == "HIGH"]
+    wrong_high_failures = sum(record.material_error for record in high_records)
+    raw_counts["wrong_high"] = {
+        "passed": len(high_records) - wrong_high_failures,
+        "failed": wrong_high_failures,
+    }
+    denominators["wrong_high"] = len(high_records)
+    proportions["wrong_high"] = (
+        raw_counts["wrong_high"]["passed"] / len(high_records) if high_records else 0.0
+    )
+
+    if set(raw_counts) != RELEASE_CHECK_NAMES | {"wrong_high"}:
+        raise AssertionError("Release gate metrics do not match the approved contract")
+    for metric in (*safety_metrics, "wrong_high"):
+        if raw_counts[metric]["failed"]:
+            failures.append(f"{metric} has {raw_counts[metric]['failed']} safety failure(s)")
+    for metric in behavioral_metrics:
+        if denominators[metric] == 0:
+            failures.append(f"{metric} has no eligible cases")
+    if proportions["top_1"] < 0.75 and denominators["top_1"]:
+        failures.append("top_1 is below the 75% threshold")
+    if proportions["top_2"] < 0.90 and denominators["top_2"]:
+        failures.append("top_2 is below the 90% threshold")
+    if proportions["required_abstention"] < 1.0 and denominators["required_abstention"]:
+        failures.append("required_abstention is below the 100% threshold")
+    false_abstention_rate = 1.0 - proportions["false_abstention"]
+    if false_abstention_rate > 0.20 and denominators["false_abstention"]:
+        failures.append("false_abstention exceeds the 20% threshold")
+    return ReleaseGateReport(
+        status="FAIL" if failures else "PASS",
+        raw_counts=raw_counts,
+        denominators=denominators,
+        proportions=proportions,
+        failures=failures,
     )
 
 
@@ -311,3 +397,25 @@ def _calibration_metadata(report: InvestigationReport) -> tuple[bool, str]:
     except ValueError as error:
         return False, f"Invalid calibration metadata: {error}"
     return True, f"Calibration metadata status={report.calibration_metadata.status}."
+
+
+def _confidence_caps(report: InvestigationReport) -> tuple[bool, str]:
+    """Verify every applied deterministic cap still bounds the ordinal score."""
+
+    maxima = {
+        "NO_PRIMARY_EVIDENCE": 0.70,
+        "DISCLOSURE_COVERAGE_PARTIAL": 0.65,
+        "MATERIAL_CONFLICT": 0.60,
+        "TIMING_UNRESOLVED": 0.60,
+        "INTRADAY_DATA_MISSING": 0.65,
+    }
+    unknown = sorted(set(report.confidence.applied_caps) - set(maxima))
+    if unknown:
+        return False, f"Unknown confidence caps: {unknown}"
+    maximum = min((maxima[cap] for cap in report.confidence.applied_caps), default=1.0)
+    if report.confidence.score > maximum:
+        return (
+            False,
+            f"score={report.confidence.score} exceeds applied-cap maximum={maximum}",
+        )
+    return True, f"caps={report.confidence.applied_caps}; maximum={maximum}"

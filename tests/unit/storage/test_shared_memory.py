@@ -2,6 +2,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from asx_investigator.confidence.calibration import (
+    CalibrationRecord,
+    build_calibration_artifact,
+    review_calibration_artifact,
+)
 from asx_investigator.storage.memory import (
     MemoryAdmissionError,
     SharedMemoryRepository,
@@ -115,7 +120,7 @@ async def test_typed_internal_memory_rejects_unknown_and_nested_payloads(tmp_pat
                 "valid_until": active_until,
             },
         )
-    with pytest.raises(MemoryAdmissionError, match="unknown|nested"):
+    with pytest.raises(MemoryAdmissionError, match="reviewed"):
         await memory.put(
             "CALIBRATION_ARTIFACT",
             {
@@ -128,7 +133,7 @@ async def test_typed_internal_memory_rejects_unknown_and_nested_payloads(tmp_pat
                 "rules": {"sealed_holdout_label": "EXPLAINED"},
             },
         )
-    with pytest.raises(MemoryAdmissionError, match="nested"):
+    with pytest.raises(MemoryAdmissionError, match="reviewed"):
         await memory.put(
             "CALIBRATION_ARTIFACT",
             {
@@ -157,10 +162,24 @@ async def test_typed_internal_memory_keeps_only_provider_and_calibration_metadat
         observed_at=valid_from,
         valid_until=valid_until,
     )
+    artifact = build_calibration_artifact(
+        records=[
+            CalibrationRecord(
+                case_id=f"case-{index}", confidence_band="HIGH", correct=True
+            )
+            for index in range(5)
+        ],
+        corpus_version="gold-dev-v1",
+        confidence_rule_version="confidence-v1",
+    )
+    reviewed = review_calibration_artifact(
+        artifact,
+        reviewer="evaluation-reviewer",
+        reviewed_at=valid_from,
+        creation_commit="abcdef1",
+    )
     calibration = await memory.record_calibration_artifact(
-        calibration_version="calibration-v1",
-        rule_version="confidence-v1",
-        artifact_hash="4" * 64,
+        artifact=reviewed,
         rule_hash="5" * 64,
         valid_from=valid_from,
         valid_until=valid_until,
@@ -168,10 +187,30 @@ async def test_typed_internal_memory_keeps_only_provider_and_calibration_metadat
 
     assert health.payload == {"provider": "EODHD", "status": "SUCCESS"}
     assert calibration.payload == {
-        "calibration_version": "calibration-v1",
+        "calibration_version": "confidence-calibration-v1",
         "rule_version": "confidence-v1",
         "rule_hash": "5" * 64,
     }
+
+
+async def test_unreviewed_calibration_artifacts_cannot_use_the_generic_memory_path(
+    tmp_path,
+) -> None:
+    memory = SharedMemoryRepository(tmp_path / "cases.db")
+    await memory.initialize()
+
+    with pytest.raises(MemoryAdmissionError, match="reviewed"):
+        await memory.put(
+            "CALIBRATION_ARTIFACT",
+            {
+                "calibration_version": "confidence-calibration-v1",
+                "rule_version": "confidence-v1",
+                "artifact_hash": "4" * 64,
+                "rule_hash": "5" * 64,
+                "valid_from": datetime(2026, 8, 20, tzinfo=UTC),
+                "valid_until": datetime(2027, 1, 1, tzinfo=UTC),
+            },
+        )
 
 
 async def test_context_facts_are_selected_as_of_case_cutoff_not_wall_clock(tmp_path) -> None:

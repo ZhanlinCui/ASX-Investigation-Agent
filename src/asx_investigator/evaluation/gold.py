@@ -5,19 +5,28 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from time import perf_counter
 
 from pydantic import ValidationError
 
 from asx_investigator.agent.reasoning import InvestigationReasoner
+from asx_investigator.confidence.calibration import (
+    CalibrationRecord,
+    calibration_record_from_evaluation,
+)
 from asx_investigator.evaluation.bundles import (
     FrozenBundleError,
     FrozenCaseGateway,
     FrozenGoldCorpus,
     load_frozen_gold_corpus,
 )
-from asx_investigator.evaluation.grading import grade_report, normalized_ledger
+from asx_investigator.evaluation.grading import (
+    evaluate_release_gates,
+    grade_report,
+    normalized_ledger,
+)
 from asx_investigator.evaluation.models import (
     CaseEvaluation,
     EvalCaseManifest,
@@ -27,6 +36,7 @@ from asx_investigator.evaluation.models import (
     GoldExecutionCase,
     GoldExecutionReport,
     GoldReleaseReport,
+    ReleaseGateReport,
 )
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.market.sessions import resolve_session
@@ -116,6 +126,57 @@ def grade_gold_cases(evaluations: list[CaseEvaluation]) -> GoldReleaseReport:
         raw_counts=counts,
         proportions=proportions,
         case_failures=failures,
+    )
+
+
+def build_development_calibration_records(
+    execution: GoldExecutionReport,
+    *,
+    material_errors: Mapping[str, bool],
+) -> list[CalibrationRecord]:
+    """Prepare development records for an explicit calibration review.
+
+    A reviewer must supply one material-error decision for every executed
+    development case. This function neither approves the artifact nor writes
+    product memory. Sealed holdout reports intentionally cannot use this path.
+    """
+
+    if execution.corpus != "development":
+        raise ValueError("Only development execution can produce calibration records")
+    if execution.status == "NOT_RUN":
+        return []
+    if execution.status != "PASS":
+        raise ValueError("Only a passed development execution can form calibration records")
+    case_ids = {case.case_id for case in execution.cases}
+    if set(material_errors) != case_ids:
+        raise ValueError("Material-error review must cover every development case exactly once")
+    records: list[CalibrationRecord] = []
+    for case in execution.cases:
+        if case.evaluation is None:
+            raise ValueError("Development execution requires deterministic case evaluations")
+        records.append(
+            calibration_record_from_evaluation(
+                case.report,
+                case.evaluation,
+                cohort="DEVELOPMENT",
+                material_error=material_errors[case.case_id],
+            )
+        )
+    return records
+
+
+def grade_external_holdout_records(
+    records: list[CalibrationRecord],
+    *,
+    external_corpus_executed: bool,
+) -> ReleaseGateReport:
+    """Compare sealed holdout results without selecting or modifying a rule."""
+
+    if any(record.cohort != "HOLDOUT" for record in records):
+        raise ValueError("External holdout grading requires holdout records only")
+    return evaluate_release_gates(
+        records,
+        external_corpus_executed=external_corpus_executed,
     )
 
 
