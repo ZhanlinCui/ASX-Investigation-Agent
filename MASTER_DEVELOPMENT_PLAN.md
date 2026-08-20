@@ -1,5 +1,11 @@
 # ASX Unusual Trading Investigation Agent Master Development Plan
 
+## Current implementation status — 20 August 2026
+
+The first product slice is implemented and verified: typed domain objects, ASX session/market logic, evidence timing and citation gates, confidence caps, a constrained Gemini explanation adapter, recorded and live tool boundaries, asynchronous API, Markdown export, an English investigation workbench, and a recorded regression harness.
+
+The next milestone is **live-data hardening**, not additional agent roles: complete a licensed issuer-document acquisition path, add a tested market-data fallback, freeze point-in-time source snapshots, persist cases/artifacts, and establish a blind calibration set. Do not claim a calibrated probability or complete disclosure coverage before those gates are met.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement each phase plan task by task. Every phase must have its own reviewed execution plan before code changes begin.
 
 **Goal:** Build a working agent that accepts an ASX-listed equity ticker and an ASX date, explains the unusual price move, rates the confidence of each material claim, and cites the evidence behind each claim.

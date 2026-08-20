@@ -1,0 +1,11 @@
+[
+  {
+    "name": "pre_open_primary_disclosure",
+    "ticker": "BHP",
+    "trade_date": "2026-08-20",
+    "mode": "RECORDED",
+    "expected_status": "COMPLETED",
+    "expected_primary_claim_id": "C1",
+    "expected_claim_type": "CAUSE"
+  }
+]
