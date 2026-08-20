@@ -4,6 +4,11 @@ import math
 from hashlib import sha256
 
 from asx_investigator.confidence.calibration import RELEASE_CHECK_NAMES, CalibrationRecord
+from asx_investigator.confidence.scoring import (
+    ConfidenceFeatures,
+    confidence_cap_maximum,
+    required_confidence_caps,
+)
 from asx_investigator.domain.models import (
     ClaimType,
     EvidenceRole,
@@ -20,9 +25,23 @@ from asx_investigator.investigation.claim_compiler import (
     ClaimCompilationError,
     compile_claim,
 )
-from asx_investigator.market.sessions import resolve_session
+from asx_investigator.market.sessions import classify_event, resolve_session
 
 MATERIAL_CLAIMS = {ClaimType.CAUSE, ClaimType.CONTRIBUTOR, ClaimType.MECHANICAL}
+
+# Safety checks are zero-tolerance release evidence: absence means the corpus
+# has not demonstrated the property, rather than that it passed by default.
+_REQUIRED_ZERO_TOLERANCE_METRICS = (
+    "lookahead",
+    "session",
+    "citation",
+    "provider_semantics",
+    "reproducibility",
+    "confidence_caps",
+    "wrong_high",
+)
+_REQUIRED_ATTRIBUTION_METRICS = ("top_1", "top_2")
+_CONDITIONAL_BEHAVIORAL_METRICS = ("required_abstention", "false_abstention")
 
 
 def grade_report(
@@ -246,20 +265,8 @@ def evaluate_release_gates(
     if not external_corpus_executed or not records:
         return ReleaseGateReport(status="NOT_RUN", raw_counts={}, denominators={}, proportions={})
 
-    safety_metrics = (
-        "lookahead",
-        "session",
-        "citation",
-        "provider_semantics",
-        "reproducibility",
-        "confidence_caps",
-    )
-    behavioral_metrics = (
-        "top_1",
-        "top_2",
-        "required_abstention",
-        "false_abstention",
-    )
+    safety_metrics = _REQUIRED_ZERO_TOLERANCE_METRICS[:-1]
+    behavioral_metrics = (*_REQUIRED_ATTRIBUTION_METRICS, *_CONDITIONAL_BEHAVIORAL_METRICS)
     raw_counts: dict[str, dict[str, int]] = {}
     denominators: dict[str, int] = {}
     proportions: dict[str, float] = {}
@@ -283,10 +290,13 @@ def evaluate_release_gates(
 
     if set(raw_counts) != RELEASE_CHECK_NAMES | {"wrong_high"}:
         raise AssertionError("Release gate metrics do not match the approved contract")
-    for metric in (*safety_metrics, "wrong_high"):
+    for metric in _REQUIRED_ZERO_TOLERANCE_METRICS:
+        if denominators[metric] == 0:
+            failures.append(f"{metric} has no eligible observations")
+            continue
         if raw_counts[metric]["failed"]:
             failures.append(f"{metric} has {raw_counts[metric]['failed']} safety failure(s)")
-    for metric in behavioral_metrics:
+    for metric in _REQUIRED_ATTRIBUTION_METRICS:
         if denominators[metric] == 0:
             failures.append(f"{metric} has no eligible cases")
     if proportions["top_1"] < 0.75 and denominators["top_1"]:
@@ -400,22 +410,74 @@ def _calibration_metadata(report: InvestigationReport) -> tuple[bool, str]:
 
 
 def _confidence_caps(report: InvestigationReport) -> tuple[bool, str]:
-    """Verify every applied deterministic cap still bounds the ordinal score."""
+    """Verify declared caps against caps recomputed from report state.
 
-    maxima = {
-        "NO_PRIMARY_EVIDENCE": 0.70,
-        "DISCLOSURE_COVERAGE_PARTIAL": 0.65,
-        "MATERIAL_CONFLICT": 0.60,
-        "TIMING_UNRESOLVED": 0.60,
-        "INTRADAY_DATA_MISSING": 0.65,
+    The assessment field is display metadata.  Release eligibility is derived
+    afresh from selected evidence, coverage, conflicts and market resolution
+    so a forged or omitted ``applied_caps`` value cannot conceal a cap.
+    """
+
+    evidence = {item.evidence_id: item for item in report.evidence}
+    selected = next(
+        (
+            item
+            for item in report.hypotheses
+            if item.hypothesis_id == report.confidence.selected_hypothesis_id
+        ),
+        None,
+    )
+    selected_support = [
+        evidence[evidence_id]
+        for evidence_id in (selected.supporting_evidence_ids if selected else [])
+        if evidence_id in evidence
+    ]
+    primary_authorities = {
+        "PRIMARY_ISSUER",
+        "APPROVED_OFFICIAL",
+        "USER_SUPPLIED_OFFICIAL",
     }
-    unknown = sorted(set(report.confidence.applied_caps) - set(maxima))
-    if unknown:
-        return False, f"Unknown confidence caps: {unknown}"
-    maximum = min((maxima[cap] for cap in report.confidence.applied_caps), default=1.0)
+    session = resolve_session(report.trade_date)
+    needs_intraday_data = any(
+        classify_event(item.published_at, session).session_relationship == "DURING_SESSION"
+        for item in selected_support
+    )
+    features = ConfidenceFeatures(
+        source_authority=0,
+        temporal_eligibility=0,
+        market_signature_fit=0,
+        quantitative_consistency=0,
+        independent_corroboration=0,
+        coverage_completeness=0,
+        has_primary_evidence=any(
+            item.authority in primary_authorities for item in selected_support
+        ),
+        disclosure_coverage_complete=report.coverage_status == "COMPLETE",
+        has_material_conflict=any(conflict.material for conflict in report.conflicts),
+        timing_resolved=not needs_intraday_data,
+        needs_intraday_data=needs_intraday_data,
+        has_intraday_data=(
+            report.market_move is not None and report.market_move.resolution == "INTRADAY"
+        ),
+    )
+    required_caps = required_confidence_caps(features)
+    declared_caps = list(report.confidence.applied_caps)
+    try:
+        maximum = confidence_cap_maximum(required_caps)
+        confidence_cap_maximum(declared_caps)
+    except ValueError as error:
+        return False, str(error)
+    missing = sorted(set(required_caps) - set(declared_caps))
+    unexpected = sorted(set(declared_caps) - set(required_caps))
+    if missing or unexpected:
+        return (
+            False,
+            f"required_caps={required_caps}; declared_caps={declared_caps}; "
+            f"missing={missing}; unexpected={unexpected}",
+        )
     if report.confidence.score > maximum:
         return (
             False,
-            f"score={report.confidence.score} exceeds applied-cap maximum={maximum}",
+            f"score={report.confidence.score} exceeds required-cap maximum={maximum}; "
+            f"required_caps={required_caps}",
         )
-    return True, f"caps={report.confidence.applied_caps}; maximum={maximum}"
+    return True, f"required_caps={required_caps}; maximum={maximum}"

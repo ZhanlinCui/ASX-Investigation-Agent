@@ -213,6 +213,48 @@ async def test_unreviewed_calibration_artifacts_cannot_use_the_generic_memory_pa
         )
 
 
+async def test_forged_reviewed_calibration_models_are_revalidated_before_persistence(
+    tmp_path,
+) -> None:
+    memory = SharedMemoryRepository(tmp_path / "cases.db")
+    await memory.initialize()
+    valid_from = datetime(2026, 8, 20, tzinfo=UTC)
+    valid_until = datetime(2027, 1, 1, tzinfo=UTC)
+    artifact = build_calibration_artifact(
+        records=[
+            CalibrationRecord(case_id=f"case-{index}", confidence_band="HIGH", correct=True)
+            for index in range(5)
+        ],
+        corpus_version="gold-dev-v1",
+        confidence_rule_version="confidence-v1",
+    )
+    reviewed = review_calibration_artifact(
+        artifact,
+        reviewer="evaluation-reviewer",
+        reviewed_at=valid_from,
+        creation_commit="abcdef1",
+    )
+    forged_nested = artifact.__class__.model_construct(
+        **{**artifact.model_dump(), "artifact_hash": "0" * 64}
+    )
+    forged_nested_review = reviewed.__class__.model_construct(artifact=forged_nested)
+    forged_outer_review = reviewed.__class__.model_construct(
+        artifact=artifact,
+        reviewer="",
+        reviewed_at=valid_from,
+        creation_commit="not-a-commit",
+    )
+
+    for forged in (forged_nested_review, forged_outer_review):
+        with pytest.raises(MemoryAdmissionError, match="Reviewed calibration artifact"):
+            await memory.record_calibration_artifact(
+                artifact=forged,
+                rule_hash="5" * 64,
+                valid_from=valid_from,
+                valid_until=valid_until,
+            )
+
+
 async def test_context_facts_are_selected_as_of_case_cutoff_not_wall_clock(tmp_path) -> None:
     memory = SharedMemoryRepository(tmp_path / "cases.db")
     await memory.initialize()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Final
 
 from asx_investigator.domain.models import (
     Claim,
@@ -10,6 +11,17 @@ from asx_investigator.domain.models import (
 )
 
 ACTIVE_CONFIDENCE_RULE_VERSION = "confidence-v1"
+
+# These are ordinal score bounds, never empirical probabilities.  Keeping the
+# conditions and maxima in this module gives production scoring and release
+# evaluation one source of truth.
+CONFIDENCE_CAP_MAXIMA: Final[dict[str, float]] = {
+    "NO_PRIMARY_EVIDENCE": 0.70,
+    "DISCLOSURE_COVERAGE_PARTIAL": 0.65,
+    "MATERIAL_CONFLICT": 0.60,
+    "TIMING_UNRESOLVED": 0.60,
+    "INTRADAY_DATA_MISSING": 0.65,
+}
 
 
 @dataclass(frozen=True)
@@ -30,6 +42,32 @@ class ConfidenceFeatures:
     has_intraday_data: bool = False
 
 
+def required_confidence_caps(features: ConfidenceFeatures) -> list[str]:
+    """Return the complete, deterministic cap set for observable features."""
+
+    caps: list[str] = []
+    if not features.has_primary_evidence:
+        caps.append("NO_PRIMARY_EVIDENCE")
+    if not features.disclosure_coverage_complete:
+        caps.append("DISCLOSURE_COVERAGE_PARTIAL")
+    if features.has_material_conflict:
+        caps.append("MATERIAL_CONFLICT")
+    if not features.timing_resolved:
+        caps.append("TIMING_UNRESOLVED")
+    if features.needs_intraday_data and not features.has_intraday_data:
+        caps.append("INTRADAY_DATA_MISSING")
+    return caps
+
+
+def confidence_cap_maximum(caps: list[str]) -> float:
+    """Return the strictest cap maximum and reject undeclared policy names."""
+
+    unknown = sorted(set(caps) - set(CONFIDENCE_CAP_MAXIMA))
+    if unknown:
+        raise ValueError(f"Unknown confidence caps: {unknown}")
+    return min((CONFIDENCE_CAP_MAXIMA[cap] for cap in caps), default=1.0)
+
+
 def score_confidence(features: ConfidenceFeatures) -> ConfidenceAssessment:
     raw = (
         features.source_authority * 0.2
@@ -42,22 +80,8 @@ def score_confidence(features: ConfidenceFeatures) -> ConfidenceAssessment:
         - features.alternative_strength * 0.15
     )
     score = max(0.0, min(1.0, raw))
-    caps: list[str] = []
-    if not features.has_primary_evidence:
-        score = min(score, 0.70)
-        caps.append("NO_PRIMARY_EVIDENCE")
-    if not features.disclosure_coverage_complete:
-        score = min(score, 0.65)
-        caps.append("DISCLOSURE_COVERAGE_PARTIAL")
-    if features.has_material_conflict:
-        score = min(score, 0.60)
-        caps.append("MATERIAL_CONFLICT")
-    if not features.timing_resolved:
-        score = min(score, 0.60)
-        caps.append("TIMING_UNRESOLVED")
-    if features.needs_intraday_data and not features.has_intraday_data:
-        score = min(score, 0.65)
-        caps.append("INTRADAY_DATA_MISSING")
+    caps = required_confidence_caps(features)
+    score = min(score, confidence_cap_maximum(caps))
     score = round(score, 2)
     band = "HIGH" if score >= 0.75 else "MEDIUM" if score >= 0.45 else "LOW"
     positive_factors: list[str] = []

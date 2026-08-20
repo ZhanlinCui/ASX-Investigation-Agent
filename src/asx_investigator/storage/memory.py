@@ -15,7 +15,10 @@ from uuid import uuid4
 import aiosqlite
 from pydantic import ValidationError
 
-from asx_investigator.confidence.calibration import ReviewedCalibrationArtifact
+from asx_investigator.confidence.calibration import (
+    ReviewedCalibrationArtifact,
+    revalidate_reviewed_calibration_artifact,
+)
 from asx_investigator.domain.models import IssuerReferenceFact, SharedMemoryEntry
 
 ALLOWED_MEMORY_TYPES = {
@@ -395,13 +398,17 @@ class SharedMemoryRepository:
     ) -> SharedMemoryEntry:
         """Store reviewed immutable provenance, never labels or calibration outcomes."""
 
-        if not isinstance(artifact, ReviewedCalibrationArtifact):
-            raise MemoryAdmissionError("Calibration artifacts must be reviewed before admission")
+        try:
+            reviewed_artifact = revalidate_reviewed_calibration_artifact(artifact)
+        except (TypeError, ValidationError, ValueError) as error:
+            raise MemoryAdmissionError(
+                "Reviewed calibration artifact failed immutable admission validation"
+            ) from error
 
         payload: dict[str, object] = {
-            "calibration_version": artifact.artifact.artifact_version,
-            "rule_version": artifact.artifact.confidence_rule_version,
-            "artifact_hash": artifact.artifact.artifact_hash,
+            "calibration_version": reviewed_artifact.artifact.artifact_version,
+            "rule_version": reviewed_artifact.artifact.confidence_rule_version,
+            "artifact_hash": reviewed_artifact.artifact.artifact_hash,
             "rule_hash": rule_hash,
             "valid_from": valid_from,
             "valid_until": valid_until,

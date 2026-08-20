@@ -2,6 +2,8 @@ import pytest
 
 from asx_investigator.confidence.scoring import (
     ConfidenceFeatures,
+    confidence_cap_maximum,
+    required_confidence_caps,
     requires_abstention,
     score_confidence,
 )
@@ -88,6 +90,40 @@ def test_each_confidence_cap_is_directly_exercised(
 
     assert cap in assessment.applied_caps
     assert assessment.band != "HIGH"
+
+
+@pytest.mark.parametrize(
+    ("updates", "expected_cap"),
+    [
+        ({"has_primary_evidence": False}, "NO_PRIMARY_EVIDENCE"),
+        ({"disclosure_coverage_complete": False}, "DISCLOSURE_COVERAGE_PARTIAL"),
+        ({"has_material_conflict": True}, "MATERIAL_CONFLICT"),
+        ({"timing_resolved": False}, "TIMING_UNRESOLVED"),
+        (
+            {"needs_intraday_data": True, "has_intraday_data": False},
+            "INTRADAY_DATA_MISSING",
+        ),
+    ],
+)
+def test_scoring_uses_the_shared_cap_rules_and_maxima(
+    updates: dict[str, bool], expected_cap: str
+) -> None:
+    features = ConfidenceFeatures(
+        source_authority=1,
+        temporal_eligibility=1,
+        market_signature_fit=1,
+        quantitative_consistency=1,
+        independent_corroboration=1,
+        coverage_completeness=1,
+        **updates,
+    )
+
+    required = required_confidence_caps(features)
+    assessment = score_confidence(features)
+
+    assert required == [expected_cap]
+    assert assessment.applied_caps == required
+    assert assessment.score <= confidence_cap_maximum(required)
 
 
 def test_low_band_requires_abstention_but_medium_does_not() -> None:

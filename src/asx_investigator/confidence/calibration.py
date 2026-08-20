@@ -205,6 +205,23 @@ class ReviewedCalibrationArtifact(BaseModel):
         return self
 
 
+def revalidate_reviewed_calibration_artifact(
+    artifact: ReviewedCalibrationArtifact,
+) -> ReviewedCalibrationArtifact:
+    """Rebuild a reviewed artifact through all Pydantic invariants.
+
+    ``model_construct`` can create a value that satisfies ``isinstance`` while
+    bypassing nested artifact hashes and review provenance validators.  Shared
+    memory is a durable trust boundary, so it accepts only this round-tripped,
+    structurally revalidated representation.
+    """
+
+    if not isinstance(artifact, ReviewedCalibrationArtifact):
+        raise ValueError("Calibration artifacts must be reviewed before admission")
+    serialized = artifact.model_dump(mode="json", warnings="error")
+    return ReviewedCalibrationArtifact.model_validate(serialized)
+
+
 def build_calibration_artifact(
     records: list[CalibrationRecord],
     *,

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 
 from asx_investigator.confidence.calibration import (
@@ -13,8 +16,9 @@ from asx_investigator.confidence.scoring import (
     ConfidenceFeatures,
     score_confidence,
 )
+from asx_investigator.domain.models import SourceConflict
 from asx_investigator.evaluation.gold import grade_external_holdout_records
-from asx_investigator.evaluation.grading import evaluate_release_gates
+from asx_investigator.evaluation.grading import _confidence_caps, evaluate_release_gates
 from asx_investigator.evaluation.models import ReleaseGateReport
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers.recorded import RecordedToolGateway
@@ -74,6 +78,58 @@ def test_zero_eligible_behavioral_gate_does_not_pass_release() -> None:
     assert gate.status == "FAIL"
     assert gate.denominators["top_1"] == 0
     assert "top_1 has no eligible cases" in gate.failures
+
+
+_REQUIRED_SAFETY_CHECKS = (
+    "lookahead",
+    "session",
+    "citation",
+    "provider_semantics",
+    "reproducibility",
+    "confidence_caps",
+)
+
+
+_COMPLETE_RELEASE_CHECKS = {
+    **{name: True for name in _REQUIRED_SAFETY_CHECKS},
+    "top_1": True,
+    "top_2": True,
+}
+
+
+@pytest.mark.parametrize("missing_check", _REQUIRED_SAFETY_CHECKS)
+def test_each_unobserved_required_safety_check_blocks_a_nonempty_release(
+    missing_check: str,
+) -> None:
+    checks = {key: value for key, value in _COMPLETE_RELEASE_CHECKS.items() if key != missing_check}
+
+    gate = evaluate_release_gates(
+        [release_record("case-1", band="HIGH", checks=checks)]
+    )
+
+    assert gate.status == "FAIL"
+    assert gate.denominators[missing_check] == 0
+    assert f"{missing_check} has no eligible observations" in gate.failures
+
+
+def test_unobserved_high_confidence_safety_check_blocks_a_nonempty_release() -> None:
+    gate = evaluate_release_gates(
+        [release_record("case-1", band="MEDIUM", checks=_COMPLETE_RELEASE_CHECKS)]
+    )
+
+    assert gate.status == "FAIL"
+    assert gate.denominators["wrong_high"] == 0
+    assert "wrong_high has no eligible observations" in gate.failures
+
+
+def test_policy_conditional_abstention_checks_need_not_have_an_eligible_case() -> None:
+    gate = evaluate_release_gates(
+        [release_record("case-1", band="HIGH", checks=_COMPLETE_RELEASE_CHECKS)]
+    )
+
+    assert gate.status == "PASS"
+    assert gate.denominators["required_abstention"] == 0
+    assert gate.denominators["false_abstention"] == 0
 
 
 def test_release_uses_actual_behavioral_denominators_and_thresholds() -> None:
@@ -171,3 +227,79 @@ async def test_only_a_matching_reviewed_artifact_can_attach_to_a_report() -> Non
     assert report.calibration_metadata.status == "NOT_RUN"
     assert attached.calibration_metadata.artifact_hash == artifact.artifact_hash
     assert attached.confidence.calibration_status == "MEASURED"
+
+
+async def test_confidence_cap_release_check_derives_requirements_from_report_state() -> None:
+    report = await InvestigationService(RecordedToolGateway.default()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+    elevated = report.confidence.model_copy(
+        update={"score": 0.99, "band": "HIGH", "applied_caps": []}
+    )
+    in_session_evidence = report.evidence[0].model_copy(
+        update={
+            "published_at": datetime(
+                2026, 8, 20, 11, tzinfo=ZoneInfo("Australia/Sydney")
+            )
+        }
+    )
+    candidates = [
+        (
+            "NO_PRIMARY_EVIDENCE",
+            report.model_copy(
+                update={
+                    "evidence": [
+                        report.evidence[0].model_copy(update={"authority": "DISCOVERY"})
+                    ],
+                    "confidence": elevated,
+                }
+            ),
+        ),
+        (
+            "DISCLOSURE_COVERAGE_PARTIAL",
+            report.model_copy(
+                update={
+                    "coverage_status": "PARTIAL_DISCLOSURE_COVERAGE",
+                    "confidence": elevated,
+                }
+            ),
+        ),
+        (
+            "MATERIAL_CONFLICT",
+            report.model_copy(
+                update={
+                    "conflicts": [
+                        SourceConflict(
+                            conflict_id="CONFLICT-1",
+                            field="close",
+                            primary_source="EODHD",
+                            primary_value="10.00",
+                            secondary_source="Marketstack",
+                            secondary_value="10.10",
+                            resolution="Not averaged; primary retained.",
+                            material=True,
+                        )
+                    ],
+                    "confidence": elevated,
+                }
+            ),
+        ),
+        (
+            "TIMING_UNRESOLVED",
+            report.model_copy(
+                update={"evidence": [in_session_evidence], "confidence": elevated}
+            ),
+        ),
+        (
+            "INTRADAY_DATA_MISSING",
+            report.model_copy(
+                update={"evidence": [in_session_evidence], "confidence": elevated}
+            ),
+        ),
+    ]
+
+    for expected_cap, candidate in candidates:
+        passed, detail = _confidence_caps(candidate)
+
+        assert passed is False
+        assert expected_cap in detail
