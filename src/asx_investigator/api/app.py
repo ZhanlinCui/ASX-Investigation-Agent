@@ -15,8 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from asx_investigator.agent.gemini import GeminiNarrativeGenerator
-from asx_investigator.domain.models import InvestigationReport, InvestigationStatus
+from asx_investigator.agent.gemini import GeminiInvestigationReasoner
+from asx_investigator.domain.models import (
+    InvestigationReport,
+    InvestigationStatus,
+    TraceReference,
+)
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers.live import LiveToolGateway
 from asx_investigator.report.markdown import render_markdown
@@ -88,10 +92,10 @@ class CaseManager:
         )
         await self.repository.append_event(record.version_id, "status", "queued", "QUEUED")
         record = await self.repository.update_status(
-            record.version_id, "RUNNING", active_stage="resolve_session"
+            record.version_id, "RUNNING", active_stage="resolve_instrument"
         )
         await self.repository.append_event(
-            record.version_id, "status", "resolve_session", "RUNNING"
+            record.version_id, "status", "resolve_instrument", "RUNNING"
         )
         self._launch(record, request)
         return record
@@ -116,10 +120,10 @@ class CaseManager:
             {"parent_version_id": parent.version_id},
         )
         child = await self.repository.update_status(
-            child.version_id, "RUNNING", active_stage="resolve_session"
+            child.version_id, "RUNNING", active_stage="resolve_instrument"
         )
         await self.repository.append_event(
-            child.version_id, "status", "resolve_session", "RUNNING"
+            child.version_id, "status", "resolve_instrument", "RUNNING"
         )
         self._launch(child, request)
         return child
@@ -146,7 +150,7 @@ class CaseManager:
         task.add_done_callback(self.tasks.discard)
 
     async def _run(self, record: CaseVersionRecord, request: InvestigationRequest) -> None:
-        stage = record.active_stage or "resolve_session"
+        stage = record.active_stage or "resolve_instrument"
         try:
             if record.status != "RUNNING":
                 await self.repository.update_status(
@@ -155,14 +159,47 @@ class CaseManager:
                 await self.repository.append_event(
                     record.version_id, "status", stage, "RUNNING"
                 )
+
+            async def persist_stage(
+                current_stage: str,
+                stage_status: str,
+                payload: dict[str, object],
+            ) -> None:
+                nonlocal stage
+                stage = current_stage
+                await self.repository.update_status(
+                    record.version_id, "RUNNING", active_stage=current_stage
+                )
+                await self.repository.append_event(
+                    record.version_id,
+                    "stage",
+                    current_stage,
+                    stage_status,
+                    payload,
+                )
+
             report = await self.service.investigate(
-                request.ticker, request.trade_date, mode=request.mode
+                request.ticker,
+                request.trade_date,
+                mode=request.mode,
+                on_stage=persist_stage,
             )
             report.case_id = record.case_id
             report.run_id = record.version_id
             report.status = InvestigationStatus.COMPLETED
             report.parent_case_id = record.parent_version_id
             report.case_version = record.version_number
+            await self.repository.update_status(
+                record.version_id, "RUNNING", active_stage="persist_and_publish"
+            )
+            await self.repository.append_event(
+                record.version_id, "stage", "persist_and_publish", "RUNNING"
+            )
+            persisted_events = await self.repository.list_events(record.version_id)
+            report.trace_reference = TraceReference(
+                event_count=len(persisted_events),
+                last_sequence=persisted_events[-1].sequence,
+            )
             completed = await self.repository.complete_version(
                 record.version_id,
                 report_payload=report.model_dump(mode="json"),
@@ -218,7 +255,7 @@ def create_app(
     injected_service = service is not None
     if service is None:
         service = InvestigationService(
-            LiveToolGateway(settings), narrator=GeminiNarrativeGenerator(settings)
+            LiveToolGateway(settings), reasoner=GeminiInvestigationReasoner(settings)
         )
     if repository is None:
         path = (

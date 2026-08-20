@@ -64,3 +64,28 @@ def test_refinement_creates_child_version_without_mutating_parent(tmp_path: Path
     assert child["parent_version_id"] == accepted["version_id"]
     assert child["version_number"] == 2
     assert parent["case_version"] == 1
+
+
+def test_stage_checkpoints_are_persisted_with_monotonic_sequences(tmp_path: Path) -> None:
+    repository = SQLiteCaseRepository(tmp_path / "cases.db")
+    app = create_app(
+        InvestigationService(RecordedToolGateway.default()),
+        repository=repository,
+    )
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/api/v1/investigations",
+            json={"ticker": "BHP", "trade_date": "2026-08-20", "mode": "RECORDED"},
+        ).json()
+        report = wait_for_report(client, accepted["case_id"])
+
+    import asyncio
+
+    events = asyncio.run(repository.list_events(accepted["version_id"]))
+    sequences = [event.sequence for event in events]
+    stages = {event.stage for event in events}
+
+    assert sequences == list(range(1, len(sequences) + 1))
+    assert "generate_ranked_hypotheses" not in stages
+    assert {"acquire_market_data", "deterministic_validation", "persist_and_publish"} <= stages
+    assert report["trace_reference"]["last_sequence"] < sequences[-1]

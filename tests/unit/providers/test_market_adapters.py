@@ -2,7 +2,11 @@ from datetime import date
 
 import httpx
 
-from asx_investigator.providers.market_adapters import EODHDProvider, MarketstackProvider
+from asx_investigator.providers.market_adapters import (
+    EODHDCorporateActionsProvider,
+    EODHDProvider,
+    MarketstackProvider,
+)
 from asx_investigator.providers.outcomes import ProviderStatus
 
 
@@ -91,3 +95,35 @@ async def test_http_rate_limit_is_retryable_and_empty_success_is_not_failure() -
     assert failed.error_code == "HTTP_429"
     assert no_rows.status == ProviderStatus.EMPTY
     assert no_rows.data == []
+
+
+async def test_asx_corporate_actions_use_point_in_time_official_feed_shape() -> None:
+    payload = {
+        "data": [
+            {
+                "code": "BHP.AU",
+                "date": "2026-08-20",
+                "split": "2:1",
+                "exchange": "AU",
+                "_asx_extra": {
+                    "effective_date": "2026-08-20",
+                    "corporate_action_id": "CA-123",
+                },
+            }
+        ],
+        "meta": {"total": 1},
+    }
+    provider = EODHDCorporateActionsProvider(
+        "secret",
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: response(payload))
+        ),
+    )
+
+    result = await provider.get_corporate_actions("BHP", date(2026, 8, 20))
+
+    assert result.status == ProviderStatus.SUCCESS
+    assert result.data is not None
+    assert result.data[0].effective_date == date(2026, 8, 20)
+    assert result.data[0].adjustment_factor == 2
+    assert result.data[0].source_id == "CA-123"

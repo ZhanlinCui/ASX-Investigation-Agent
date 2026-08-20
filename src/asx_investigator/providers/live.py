@@ -8,20 +8,23 @@ import httpx
 
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, InstrumentIdentity
 from asx_investigator.market.forensics import DailyBar
+from asx_investigator.providers.errors import DataProviderUnavailable
 from asx_investigator.providers.market import (
+    CorporateAction,
     MarketDataReconciler,
     MarketDataResult,
     MarketDataUnavailable,
     within_live_window,
 )
-from asx_investigator.providers.market_adapters import EODHDProvider, MarketstackProvider
+from asx_investigator.providers.market_adapters import (
+    EODHDCorporateActionsProvider,
+    EODHDProvider,
+    MarketstackProvider,
+)
+from asx_investigator.providers.outcomes import ProviderOutcome
 from asx_investigator.settings import Settings
 
 SYDNEY = ZoneInfo("Australia/Sydney")
-
-
-class DataProviderUnavailable(RuntimeError):
-    """Raised when the configured provider cannot safely answer a tool call."""
 
 
 class LiveToolGateway:
@@ -88,14 +91,47 @@ class LiveToolGateway:
         # confidence reports the gap rather than treating an index as zero.
         return None
 
+    async def get_corporate_actions(
+        self, ticker: str, trade_date: date
+    ) -> ProviderOutcome[list[CorporateAction]]:
+        return await EODHDCorporateActionsProvider(
+            self._require_eodhd(), self.client
+        ).get_corporate_actions(ticker, trade_date)
+
     async def get_evidence(self, ticker: str, trade_date: date) -> list[EvidenceItem]:
+        return await self._discover(
+            f"{ticker} ASX announcement {trade_date.isoformat()}",
+            trade_date,
+            id_prefix="D",
+        )
+
+    async def targeted_retrieve(
+        self,
+        ticker: str,
+        trade_date: date,
+        query: str,
+        purpose: str,
+    ) -> list[EvidenceItem]:
+        return await self._discover(
+            f"{query} {ticker} ASX",
+            trade_date,
+            id_prefix="T",
+        )
+
+    async def _discover(
+        self,
+        query: str,
+        trade_date: date,
+        *,
+        id_prefix: str,
+    ) -> list[EvidenceItem]:
         if not self.settings.tavily_api_key:
             return []
         response = await self.client.post(
             "https://api.tavily.com/search",
             json={
                 "api_key": self.settings.tavily_api_key,
-                "query": f"{ticker} ASX announcement {trade_date.isoformat()}",
+                "query": query,
                 "topic": "news",
                 "search_depth": "advanced",
                 "max_results": 8,
@@ -106,30 +142,25 @@ class LiveToolGateway:
         items: list[EvidenceItem] = []
         for index, row in enumerate(response.json().get("results", []), start=1):
             url = row.get("url", "")
+            host = (httpx.URL(url).host or "").lower()
+            if host == "asx.com.au" or host.endswith(".asx.com.au"):
+                continue
             title = row.get("title", "Untitled result")
             content = row.get("raw_content") or row.get("content") or ""
             published = self._parse_published_at(row.get("published_date"), trade_date)
-            # ASX pages are not scraped. A result is primary only when it is
-            # recognisably hosted on an issuer investor-relations site.
-            is_primary = "investor" in url.lower() or "investors" in url.lower()
-            role = (
-                EvidenceRole.CAUSAL_INPUT
-                if is_primary
-                else EvidenceRole.CONTEMPORANEOUS_REACTION
-            )
             items.append(
                 EvidenceItem(
-                    evidence_id=f"W{index}",
-                    source_name=(url.split("/")[2] if "/" in url else "Web result"),
+                    evidence_id=f"{id_prefix}{index}",
+                    source_name=host or "Web discovery",
                     source_url=url,
                     published_at=published,
                     retrieved_at=datetime.now(SYDNEY),
-                    role=role,
-                    authority="PRIMARY_ISSUER" if is_primary else "SECONDARY_MEDIA",
+                    role=EvidenceRole.CONTEMPORANEOUS_REACTION,
+                    authority="DISCOVERY_ONLY",
                     title=title,
                     passage=content[:4000],
                     content_hash=hashlib.sha256(content.encode()).hexdigest(),
-                    locator="Tavily result",
+                    locator="Tavily discovery result",
                 )
             )
         return items

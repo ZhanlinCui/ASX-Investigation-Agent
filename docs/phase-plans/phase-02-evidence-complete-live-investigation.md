@@ -81,13 +81,13 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 
 ### P2.4: Controlled investigation
 
-- [ ] Persist stage checkpoints and explicit transition events.
-- [ ] First model role returns up to five ranked, materially different hypotheses.
-- [ ] One targeted retrieval is allowed only when a structured evidence gap names its purpose and query.
-- [ ] Second model role challenges the leading hypothesis and returns stronger alternatives or violations.
-- [ ] Reject unknown evidence IDs and unsupported material claims.
-- [ ] Separate lifecycle from `EXPLAINED`, `NO_IDENTIFIABLE_CATALYST`, `INSUFFICIENT_EVIDENCE` and `INCOMPLETE_DATA`.
-- [ ] Gate: recorded, after-close, conflicting-source, no-catalyst and model-failure cases terminate correctly.
+- [x] Persist stage checkpoints and explicit transition events.
+- [x] First model role returns up to five ranked, materially different hypotheses.
+- [x] One targeted retrieval is allowed only when a structured evidence gap names its purpose and query.
+- [x] Second model role challenges the leading hypothesis and returns stronger alternatives or violations.
+- [x] Reject unknown evidence IDs and unsupported material claims.
+- [x] Separate lifecycle from `EXPLAINED`, `NO_IDENTIFIABLE_CATALYST`, `INSUFFICIENT_EVIDENCE` and `INCOMPLETE_DATA`.
+- [x] Gate: recorded, after-close, conflicting-source, no-catalyst and model-failure cases terminate correctly.
 
 ### P2.5: Confidence and abstention
 

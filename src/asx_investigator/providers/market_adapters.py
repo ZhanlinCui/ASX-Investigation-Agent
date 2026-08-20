@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 import httpx
 
 from asx_investigator.market.forensics import DailyBar
+from asx_investigator.providers.market import CorporateAction
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 
 
@@ -201,4 +202,96 @@ class MarketstackProvider:
             coverage="NONE",
             error_code=error_code,
             source_version="marketstack-v2",
+        )
+
+
+class EODHDCorporateActionsProvider:
+    name = "EODHD_ASX_CORPORATE_ACTIONS"
+
+    def __init__(self, api_key: str, client: httpx.AsyncClient) -> None:
+        self.api_key = api_key
+        self.client = client
+
+    async def get_corporate_actions(
+        self, ticker: str, trade_date: date
+    ) -> ProviderOutcome[list[CorporateAction]]:
+        retrieved_at = datetime.now(UTC)
+        try:
+            response = await self.client.get(
+                "https://eodhd.com/api/asx-corporate-actions",
+                params={
+                    "api_token": self.api_key,
+                    "symbol": f"{ticker.upper()}.AU",
+                    "date_from": trade_date.isoformat(),
+                    "date_to": trade_date.isoformat(),
+                    "page[limit]": 100,
+                    "fmt": "json",
+                },
+            )
+        except httpx.HTTPError:
+            return self._failure(retrieved_at, "NETWORK_ERROR")
+        if response.status_code >= 400:
+            return self._failure(
+                retrieved_at,
+                f"HTTP_{response.status_code}",
+                _failure_status(response.status_code),
+            )
+        try:
+            rows = response.json()["data"]
+            actions = [self._parse_action(row) for row in rows]
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            return self._failure(
+                retrieved_at, "SCHEMA_INVALID", ProviderStatus.PERMANENT_FAILURE
+            )
+        provenance = {
+            "symbol": f"{ticker.upper()}.AU",
+            "endpoint": "asx-corporate-actions",
+            "upstream": "ASX ReferencePoint E34",
+        }
+        return ProviderOutcome[list[CorporateAction]](
+            status=ProviderStatus.SUCCESS if actions else ProviderStatus.EMPTY,
+            provider=self.name,
+            retrieved_at=retrieved_at,
+            coverage="COMPLETE",
+            data=actions,
+            provenance=provenance,
+            source_version="asx-corporate-actions-beta-v1",
+        )
+
+    @staticmethod
+    def _parse_action(row: dict[str, object]) -> CorporateAction:
+        extra = row.get("_asx_extra")
+        asx_extra = extra if isinstance(extra, dict) else {}
+        effective = asx_extra.get("effective_date") or row.get("date")
+        if not isinstance(effective, str):
+            raise ValueError("Corporate action has no effective date")
+        split = row.get("split")
+        adjustment_factor: float | None = None
+        if isinstance(split, str) and ":" in split:
+            numerator, denominator = split.split(":", 1)
+            adjustment_factor = float(numerator) / float(denominator)
+        value = row.get("value")
+        action_type = "SPLIT" if split else str(row.get("type") or "CORPORATE_ACTION").upper()
+        source_id = asx_extra.get("corporate_action_id")
+        return CorporateAction(
+            action_type=action_type,
+            effective_date=date.fromisoformat(effective),
+            adjustment_factor=adjustment_factor,
+            cash_amount_aud=float(value) if isinstance(value, int | float) else None,
+            source_id=str(source_id or f"{row.get('code', 'ASX')}:{effective}:{action_type}"),
+        )
+
+    def _failure(
+        self,
+        retrieved_at: datetime,
+        error_code: str,
+        status: ProviderStatus = ProviderStatus.RETRYABLE_FAILURE,
+    ) -> ProviderOutcome[list[CorporateAction]]:
+        return ProviderOutcome[list[CorporateAction]](
+            status=status,
+            provider=self.name,
+            retrieved_at=retrieved_at,
+            coverage="NONE",
+            error_code=error_code,
+            source_version="asx-corporate-actions-beta-v1",
         )
