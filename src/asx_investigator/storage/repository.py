@@ -656,11 +656,18 @@ class SQLiteCaseRepository:
         return [await self.get_version(row[0]) for row in rows]
 
     async def save_checkpoint(self, checkpoint: CheckpointEnvelope) -> None:
-        existing = await self.get_version(checkpoint.version_id)
-        if existing.status in self.TERMINAL_STATUSES:
-            raise CaseVersionImmutableError(checkpoint.version_id)
         async with aiosqlite.connect(self.database_path) as connection:
             await connection.execute("PRAGMA foreign_keys=ON")
+            await connection.execute("BEGIN IMMEDIATE")
+            cursor = await connection.execute(
+                "SELECT status FROM case_versions WHERE version_id = ?",
+                (checkpoint.version_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                raise KeyError(checkpoint.version_id)
+            if str(row[0]) in self.TERMINAL_STATUSES:
+                raise CaseVersionImmutableError(checkpoint.version_id)
             await connection.execute(
                 """INSERT INTO checkpoints
                 (version_id, stage, input_artifact_hashes_json, output_artifact_hashes_json,

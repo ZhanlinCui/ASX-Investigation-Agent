@@ -1,9 +1,12 @@
+import asyncio
+import threading
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 import aiosqlite
 import pytest
 
+import asx_investigator.storage.repository as repository_module
 from asx_investigator.investigation.checkpoints import CheckpointEnvelope
 from asx_investigator.storage.repository import (
     CaseVersionImmutableError,
@@ -92,6 +95,76 @@ async def test_completed_version_rejects_checkpoint_save(
 
     with pytest.raises(CaseVersionImmutableError):
         await repository.save_checkpoint(checkpoint)
+
+
+async def test_checkpoint_status_read_is_inside_insertion_transaction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "checkpoint-race.db"
+    repository = SQLiteCaseRepository(database_path)
+    await repository.initialize()
+    case = await repository.create_case(
+        ticker="BHP",
+        trade_date=date(2026, 8, 20),
+        mode="RECORDED",
+        request_payload={"ticker": "BHP"},
+    )
+    checkpoint = CheckpointEnvelope(
+        version_id=case.version_id,
+        stage="acquire_market_data",
+        input_artifact_hashes=[],
+        output_artifact_hashes=[],
+        typed_state_json={},
+        policy_version="phase2-v1",
+    )
+
+    # Hold the write lock while save_checkpoint reaches its transaction. The
+    # trace callback gives a database-level handoff point, without timing sleeps.
+    blocker = await aiosqlite.connect(database_path)
+    await blocker.execute("BEGIN IMMEDIATE")
+    begin_seen = threading.Event()
+    status_select_seen = threading.Event()
+    handoff_seen = threading.Event()
+    original_connect = repository_module.aiosqlite.connect
+
+    def traced_connect(*args: object, **kwargs: object) -> object:
+        connection = original_connect(*args, **kwargs)
+
+        class TracedContext:
+            async def __aenter__(self) -> object:
+                entered = await connection.__aenter__()
+
+                def trace(statement: str) -> None:
+                    normalized = " ".join(statement.upper().split())
+                    if normalized == "BEGIN IMMEDIATE":
+                        begin_seen.set()
+                        handoff_seen.set()
+                    if normalized.startswith("SELECT STATUS FROM CASE_VERSIONS"):
+                        status_select_seen.set()
+                        handoff_seen.set()
+
+                await entered.set_trace_callback(trace)
+                return entered
+
+            async def __aexit__(self, *exc_info: object) -> object:
+                return await connection.__aexit__(*exc_info)
+
+        return TracedContext()
+
+    monkeypatch.setattr(repository_module.aiosqlite, "connect", traced_connect)
+    save_task = asyncio.create_task(repository.save_checkpoint(checkpoint))
+    await asyncio.to_thread(handoff_seen.wait)
+    await blocker.execute(
+        "UPDATE case_versions SET status = 'COMPLETED' WHERE version_id = ?",
+        (case.version_id,),
+    )
+    await blocker.commit()
+    await blocker.close()
+
+    with pytest.raises(CaseVersionImmutableError):
+        await save_task
+    assert begin_seen.is_set()
+    assert status_select_seen.is_set()
 
 
 async def test_running_and_recoverable_versions_are_returned_after_restart(

@@ -59,4 +59,55 @@ Exact verification command and output:
 pytest tests/unit/test_p28_artifacts_checkpoints.py tests/unit/test_phase2_contracts.py tests/unit/storage -v && ruff check src/asx_investigator/storage src/asx_investigator/providers src/asx_investigator/investigation
 17 passed in 0.11s
 All checks passed!
+
+## Reviewer fix — atomic terminal-status validation and checkpoint insert
+
+### Finding addressed
+
+`SQLiteCaseRepository.save_checkpoint` previously read the version status through
+`get_version()` on one SQLite connection and inserted the checkpoint through a
+second connection. Under WAL concurrency, a version could become terminal after
+the first read but before the insert.
+
+### Fix
+
+- `save_checkpoint` now opens one SQLite connection, enables foreign keys, and
+  starts `BEGIN IMMEDIATE` before reading `case_versions.status`.
+- The terminal-status check and checkpoint `INSERT` execute on that same
+  transaction/connection. `COMPLETED` and `FAILED` versions raise
+  `CaseVersionImmutableError`; unknown versions retain the prior `KeyError`
+  behavior.
+- The existing checkpoint schema and idempotent migration behavior are
+  unchanged, and successful nonterminal checkpoint persistence remains intact.
+
+### Regression RED evidence
+
+Added `test_checkpoint_status_read_is_inside_insertion_transaction` in
+`tests/unit/storage/test_repository.py`. It uses a second SQLite connection to
+hold `BEGIN IMMEDIATE`, then uses SQLite's trace callback as a deterministic
+database handoff (no timing sleep). The pre-fix implementation observed the
+status on its separate read connection, allowed the blocker to mark the version
+`COMPLETED`, and then successfully inserted the checkpoint; the test failed with
+`Failed: DID NOT RAISE CaseVersionImmutableError`.
+
+### Verification GREEN evidence
+
+Focused regression after the fix:
+
+```text
+pytest tests/unit/storage/test_repository.py::test_checkpoint_status_read_is_inside_insertion_transaction -q
+1 passed in 0.03s
+```
+
+Task 1/storage regression and lint suite:
+
+```text
+pytest tests/unit/test_p28_artifacts_checkpoints.py tests/unit/test_phase2_contracts.py tests/unit/storage -q
+18 passed in 0.11s
+
+ruff check src/asx_investigator/storage src/asx_investigator/providers src/asx_investigator/investigation
+All checks passed!
+
+git diff --check
+clean
 ```
