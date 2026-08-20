@@ -51,13 +51,13 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 
 ### P2.1: Durable case memory
 
-- [ ] Create SQLite WAL schema for cases, versions, events, provider calls and evidence indexes.
-- [ ] Store report and request payloads as schema-versioned JSON.
-- [ ] Make event sequence append-only and replayable from a sequence number.
-- [ ] Requeue recoverable runs at application startup.
-- [ ] Add child versions for typed refinements; never update a completed version in place.
-- [ ] Store raw bytes in a SHA-256 content-addressed artifact directory.
-- [ ] Gate: restart, event replay, version lineage, immutability and artifact deduplication tests pass.
+- [x] Create SQLite WAL schema for cases, versions, events, provider calls and evidence indexes.
+- [x] Store report and request payloads as schema-versioned JSON.
+- [x] Make event sequence append-only and replayable from a sequence number.
+- [x] Requeue recoverable runs at application startup.
+- [x] Add child versions for typed refinements; never update a completed version in place.
+- [x] Store raw bytes in a SHA-256 content-addressed artifact directory.
+- [x] Gate: restart, event replay, version lineage, immutability and artifact deduplication tests pass.
 
 ### P2.2: Live market truth
 
