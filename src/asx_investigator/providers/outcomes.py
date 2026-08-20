@@ -20,6 +20,7 @@ class ProviderOutcome[T](BaseModel):
     status: ProviderStatus
     provider: str
     retrieved_at: datetime
+    as_of: datetime | None = None
     coverage: str
     data: T | None = None
     provenance: dict[str, str] = Field(default_factory=dict)
@@ -31,6 +32,11 @@ class ProviderOutcome[T](BaseModel):
     def validate_data_for_success(self) -> ProviderOutcome[T]:
         if self.retrieved_at.tzinfo is None:
             raise ValueError("Provider outcome retrieved_at must be timezone-aware")
+        if self.as_of is not None:
+            if self.as_of.tzinfo is None:
+                raise ValueError("Provider outcome as_of must be timezone-aware")
+            if self.as_of > self.retrieved_at:
+                raise ValueError("Provider outcome as_of cannot be after retrieved_at")
         if self.status in {ProviderStatus.SUCCESS, ProviderStatus.PARTIAL} and self.data is None:
             raise ValueError(f"{self.status} outcomes require data")
         return self

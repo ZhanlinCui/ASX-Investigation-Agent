@@ -88,6 +88,7 @@ _HOLDOUT_OUTCOME_FIELDS = {
     "status",
     "provider",
     "retrieved_at",
+    "as_of",
     "coverage",
     "provenance",
     "error_code",
@@ -510,8 +511,12 @@ class FrozenCaseBundle:
             ) from error
         if not _is_sydney_timestamp(outcome.retrieved_at):
             raise FrozenBundleError(f"{label}.outcome timestamps must use Australia/Sydney time")
+        if outcome.as_of is not None and not _is_sydney_timestamp(outcome.as_of):
+            raise FrozenBundleError(f"{label}.outcome as_of must use Australia/Sydney time")
         if outcome.retrieved_at > self.evidence_cutoff:
             raise FrozenBundleError(f"{label}.outcome has invalid point-in-time timing")
+        if outcome.as_of is not None and outcome.as_of > self.evidence_cutoff:
+            raise FrozenBundleError(f"{label}.outcome as_of is after the evidence cutoff")
         if not outcome.source_version:
             raise FrozenBundleError(f"{label}.outcome must declare source_version")
         return outcome

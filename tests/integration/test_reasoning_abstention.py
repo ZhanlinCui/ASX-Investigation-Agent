@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -18,6 +19,8 @@ from asx_investigator.providers.live import DataProviderUnavailable
 from asx_investigator.providers.market import CorporateAction
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.recorded import RecordedToolGateway
+
+SYDNEY = ZoneInfo("Australia/Sydney")
 
 
 class FailingReasoner:
@@ -124,16 +127,64 @@ class PositiveMechanicalGateway(CountingGateway):
             status=ProviderStatus.SUCCESS,
             provider="OFFICIAL_ACTIONS",
             retrieved_at=original.retrieved_at,
+            as_of=datetime(2026, 8, 20, 8, 45, tzinfo=SYDNEY),
+            coverage="COMPLETE",
+            data=[
+                CorporateAction(
+                    action_type="SPLIT",
+                    effective_date=trade_date,
+                    announced_at=datetime(2026, 8, 20, 8, 30, tzinfo=SYDNEY),
+                    adjustment_factor=2.0,
+                    source_id="action-1",
+                )
+            ],
+        )
+
+
+class RetrospectiveCorporateActionGateway(CountingGateway):
+    async def get_corporate_actions(self, ticker, trade_date):
+        original = await self.delegate.get_corporate_actions(ticker, trade_date)
+        return ProviderOutcome(
+            status=ProviderStatus.SUCCESS,
+            provider="OFFICIAL_ACTIONS",
+            retrieved_at=original.retrieved_at,
             coverage="COMPLETE",
             data=[
                 CorporateAction(
                     action_type="SPLIT",
                     effective_date=trade_date,
                     adjustment_factor=2.0,
-                    source_id="action-1",
+                    source_id="retrospective-action-1",
                 )
             ],
         )
+
+    async def get_evidence(self, ticker, trade_date):
+        return []
+
+
+class FutureEffectiveCorporateActionGateway(CountingGateway):
+    async def get_corporate_actions(self, ticker, trade_date):
+        original = await self.delegate.get_corporate_actions(ticker, trade_date)
+        return ProviderOutcome(
+            status=ProviderStatus.SUCCESS,
+            provider="OFFICIAL_ACTIONS",
+            retrieved_at=original.retrieved_at,
+            as_of=datetime(2026, 8, 20, 8, 45, tzinfo=SYDNEY),
+            coverage="COMPLETE",
+            data=[
+                CorporateAction(
+                    action_type="SPLIT",
+                    effective_date=trade_date + timedelta(days=1),
+                    announced_at=datetime(2026, 8, 20, 8, 30, tzinfo=SYDNEY),
+                    adjustment_factor=2.0,
+                    source_id="future-effective-action-1",
+                )
+            ],
+        )
+
+    async def get_evidence(self, ticker, trade_date):
+        return []
 
 
 class FailedCorporateActionsGateway(CountingGateway):
@@ -327,6 +378,72 @@ async def test_positive_corporate_action_becomes_a_cited_mechanical_explanation(
     assert report.evidence[0].locator == "action-1"
 
 
+async def test_retroactively_retrieved_effective_action_cannot_explain_same_day_move() -> None:
+    report = await InvestigationService(RetrospectiveCorporateActionGateway()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+
+    assert report.outcome == "INSUFFICIENT_EVIDENCE"
+    assert all(item.driver_label != "MECHANICAL" for item in report.hypotheses)
+    assert all(item.evidence_kind != "CORPORATE_ACTION" for item in report.evidence)
+    assert all(claim.claim_type != "CAUSE" for claim in report.claims)
+    assert {gap.gap_id for gap in report.coverage_gaps} == {
+        "CORPORATE_ACTIONS_TEMPORALITY_UNVERIFIED"
+    }
+
+
+async def test_temporal_grader_rejects_mechanical_claim_without_provider_snapshot() -> None:
+    report = await InvestigationService(PositiveMechanicalGateway()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+    manifest = EvalCaseManifest(
+        case_id="mechanical-snapshot-required",
+        category="MECHANICAL",
+        scenario="A mechanical claim requires a point-in-time provider snapshot.",
+        ticker="BHP",
+        trade_date=report.trade_date,
+        evidence_cutoff=report.evidence[0].retrieved_at,
+        driver_labels=["MECHANICAL"],
+        acceptable_alternatives=[],
+        required_evidence_ids=["M1"],
+        future_evidence_blacklist=[],
+        mechanical_flags=[],
+        coverage_expectation="COMPLETE",
+        abstention_policy="FORBIDDEN",
+        expected_outcome="EXPLAINED",
+    )
+    tampered = report.model_copy(
+        update={
+            "provider_diagnostics": [
+                item.model_copy(update={"as_of": None})
+                if item.operation == "corporate_actions"
+                else item
+                for item in report.provider_diagnostics
+            ]
+        }
+    )
+
+    evaluation = grade_report(manifest, tampered, latency_ms=1, estimated_cost_aud=0.0)
+
+    temporal_check = next(
+        item for item in evaluation.checks if item.name == "temporal_integrity"
+    )
+    assert temporal_check.passed is False
+
+
+async def test_future_effective_action_cannot_explain_current_session_move() -> None:
+    report = await InvestigationService(FutureEffectiveCorporateActionGateway()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+
+    assert report.outcome == "INSUFFICIENT_EVIDENCE"
+    assert all(item.driver_label != "MECHANICAL" for item in report.hypotheses)
+    assert all(item.evidence_kind != "CORPORATE_ACTION" for item in report.evidence)
+    assert {gap.gap_id for gap in report.coverage_gaps} == {
+        "CORPORATE_ACTIONS_TEMPORALITY_UNVERIFIED"
+    }
+
+
 async def test_required_corporate_actions_failure_never_becomes_no_catalyst() -> None:
     report = await InvestigationService(FailedCorporateActionsGateway()).investigate(
         "BHP", "2026-08-20", mode="RECORDED"
@@ -336,6 +453,10 @@ async def test_required_corporate_actions_failure_never_becomes_no_catalyst() ->
     assert report.coverage_status == "INCOMPLETE_REQUIRED_PROVIDER"
     assert report.completeness.status == "PARTIAL"
     assert {gap.capability for gap in report.coverage_gaps} == {"corporate_actions"}
+    mechanical_validation = next(
+        item for item in report.validation_results if item.kind == "CORPORATE_ACTION_CHECK"
+    )
+    assert "unavailable" in mechanical_validation.summary
 
     manifest = EvalCaseManifest(
         case_id="corporate-actions-failure",

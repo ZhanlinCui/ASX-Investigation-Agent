@@ -435,10 +435,22 @@ class ProviderCallDiagnostic(BaseModel):
     status: str
     coverage: str
     retrieved_at: datetime
+    as_of: datetime | None = None
     provenance: dict[str, str] = Field(default_factory=dict)
     error_code: str | None = None
     source_version: str | None = None
     artifact_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_point_in_time_timestamps(self) -> ProviderCallDiagnostic:
+        if self.retrieved_at.tzinfo is None:
+            raise ValueError("Provider diagnostic retrieved_at must be timezone-aware")
+        if self.as_of is not None:
+            if self.as_of.tzinfo is None:
+                raise ValueError("Provider diagnostic as_of must be timezone-aware")
+            if self.as_of > self.retrieved_at:
+                raise ValueError("Provider diagnostic as_of cannot be after retrieved_at")
+        return self
 
 
 class InvestigationReport(BaseModel):

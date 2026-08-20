@@ -27,7 +27,7 @@ from asx_investigator.market.forensics import DailyBar
 from asx_investigator.providers.market import CorporateAction, MarketDataResult
 from asx_investigator.providers.outcomes import ProviderOutcome
 
-CHECKPOINT_POLICY_VERSION = "phase3-p3.2-v1"
+CHECKPOINT_POLICY_VERSION = "phase3-p3.6-v2"
 CHECKPOINT_SCHEMA_VERSION = "checkpoint-v2"
 
 DURABLE_STAGE_ORDER = (

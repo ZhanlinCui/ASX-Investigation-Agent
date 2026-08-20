@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from uuid import uuid4
 
 from asx_investigator.agent.reasoning import (
@@ -64,6 +64,7 @@ from asx_investigator.market.sessions import (
     resolve_session,
 )
 from asx_investigator.providers.errors import DataProviderUnavailable
+from asx_investigator.providers.market import action_is_same_day_causal
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.protocols import InvestigationTools
 
@@ -294,6 +295,29 @@ class InvestigationKernel:
             ProviderStatus.SUCCESS,
             ProviderStatus.EMPTY,
         }
+        actions = list(corporate_actions.data or [])
+        causal_actions = [
+            action
+            for action in actions
+            if action_is_same_day_causal(action, corporate_actions, session)
+        ]
+        unverifiable_actions = [action for action in actions if action not in causal_actions]
+        mechanical_summary = (
+            "The corporate-action feed was unavailable; no mechanical explanation "
+            "was inferred from price fields alone."
+            if not corporate_action_coverage
+            else (
+                f"The authoritative feed returned {len(actions)} corporate actions, "
+                f"but {len(unverifiable_actions)} lacked a verifiable announcement "
+                "timestamp and point-in-time provider snapshot; those actions remain "
+                "non-causal context."
+                if unverifiable_actions
+                else (
+                    f"The authoritative feed returned {len(actions)} corporate actions "
+                    "for the session; price fields were not used to invent missing events."
+                )
+            )
+        )
         validations = [
             ValidationResult(
                 validation_id="V-MECHANICAL",
@@ -303,18 +327,12 @@ class InvestigationKernel:
                     if corporate_action_coverage
                     else ValidationStatus.NOT_AVAILABLE
                 ),
-                summary=(
-                    f"The authoritative feed returned {len(corporate_actions.data or [])} "
-                    "corporate actions for the session; price fields were not used to invent "
-                    "missing events."
-                    if corporate_action_coverage
-                    else "The corporate-action feed was unavailable; no mechanical explanation "
-                    "was inferred from price fields alone."
-                ),
+                summary=mechanical_summary,
             )
         ]
         mechanical_evidence: list[EvidenceItem] = []
-        for index, action in enumerate(corporate_actions.data or [], start=1):
+        for index, action in enumerate(causal_actions, start=1):
+            assert action.announced_at is not None
             passage = (
                 f"{action.action_type} was effective on {action.effective_date.isoformat()}"
                 + (
@@ -328,7 +346,7 @@ class InvestigationKernel:
                     evidence_id=f"M{index}",
                     source_name=corporate_actions.provider,
                     source_url="https://eodhd.com/financial-apis/asx-corporate-actions-data-api/",
-                    published_at=session.market_open - timedelta(seconds=1),
+                    published_at=action.announced_at,
                     retrieved_at=corporate_actions.retrieved_at,
                     role=EvidenceRole.CAUSAL_INPUT,
                     authority="APPROVED_OFFICIAL",
@@ -392,6 +410,22 @@ class InvestigationKernel:
                         ),
                     )
                 )
+            elif unverifiable_actions:
+                coverage_gaps.append(
+                    CoverageGap(
+                        gap_id="CORPORATE_ACTIONS_TEMPORALITY_UNVERIFIED",
+                        capability="corporate_actions",
+                        provider=corporate_actions.provider,
+                        reason=(
+                            "One or more effective corporate actions lack an announcement "
+                            "timestamp or a pre-close point-in-time provider snapshot."
+                        ),
+                        impact=(
+                            "The action remains contextual only and cannot support a same-day "
+                            "mechanical explanation."
+                        ),
+                    )
+                )
             if not state.coverage_complete:
                 coverage_gaps.append(
                     CoverageGap(
@@ -427,7 +461,10 @@ class InvestigationKernel:
         # were observed. Corporate actions are one of those capabilities: a
         # missing or partial response cannot be papered over by issuer coverage.
         effective_coverage_complete = (
-            coverage_complete and corporate_action_coverage and not refinement_limited
+            coverage_complete
+            and corporate_action_coverage
+            and not unverifiable_actions
+            and not refinement_limited
         )
 
         if not state.has_completed("assemble_evidence_packet"):
@@ -658,6 +695,7 @@ class InvestigationKernel:
                 status=str(item.status),
                 coverage=item.coverage,
                 retrieved_at=item.retrieved_at,
+                as_of=item.as_of,
                 provenance=item.provenance,
                 error_code=item.error_code,
                 source_version=item.source_version,
@@ -674,6 +712,7 @@ class InvestigationKernel:
                 status=str(corporate_actions.status),
                 coverage=corporate_actions.coverage,
                 retrieved_at=corporate_actions.retrieved_at,
+                as_of=corporate_actions.as_of,
                 provenance=corporate_actions.provenance,
                 error_code=corporate_actions.error_code,
                 source_version=corporate_actions.source_version,

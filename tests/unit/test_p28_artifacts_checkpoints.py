@@ -98,7 +98,7 @@ def test_p3_assertion_checkpoints_use_a_new_contract_and_field_name() -> None:
     )
 
     assert CHECKPOINT_SCHEMA_VERSION == "checkpoint-v2"
-    assert CHECKPOINT_POLICY_VERSION == "phase3-p3.2-v1"
+    assert CHECKPOINT_POLICY_VERSION == "phase3-p3.6-v2"
     assert checkpoint.schema_version == CHECKPOINT_SCHEMA_VERSION
     assert "targeted_assertion_ids" in state.model_dump()
     assert "targeted_evidence_ids" not in state.model_dump()
@@ -224,7 +224,7 @@ async def test_case_payloads_are_versioned_and_legacy_payloads_remain_readable(
 
     assert loaded.request_payload == {"ticker": "BHP"}
     assert {"request_schema_version", "report_schema_version"}.issubset(columns)
-    assert "artifact_id" in provider_call_columns
+    assert {"artifact_id", "as_of"}.issubset(provider_call_columns)
     assert json.loads(raw_request) == {
         "schema_version": "case-payload-v1",
         "payload": {"ticker": "CBA"},

@@ -75,13 +75,46 @@ def grade_report(
         and all(evidence_id in evidence for evidence_id in claim.supporting_evidence_ids)
         for claim in material
     )
-    temporal_ok = not (cited_ids & blacklisted) and all(
-        evidence[evidence_id].role == EvidenceRole.CAUSAL_INPUT
-        and evidence[evidence_id].published_at <= manifest.evidence_cutoff
-        for evidence_id in cited_ids
-        if evidence_id in evidence
-    )
     expected_session = resolve_session(manifest.trade_date)
+    mechanical_cited_ids = {
+        evidence_id
+        for evidence_id in cited_ids
+        if evidence_id in evidence and evidence[evidence_id].evidence_kind == "CORPORATE_ACTION"
+    }
+    corporate_actions_diagnostic = next(
+        (
+            item
+            for item in report.provider_diagnostics
+            if item.operation == "corporate_actions"
+        ),
+        None,
+    )
+    mechanical_snapshot_ok = not mechanical_cited_ids or (
+        corporate_actions_diagnostic is not None
+        and corporate_actions_diagnostic.as_of is not None
+        and expected_session.market_close is not None
+        and corporate_actions_diagnostic.as_of <= expected_session.market_close
+        and all(
+            evidence[evidence_id].published_at <= corporate_actions_diagnostic.as_of
+            and classify_event(
+                evidence[evidence_id].published_at, expected_session
+            ).eligible_same_day_cause
+            for evidence_id in mechanical_cited_ids
+        )
+    )
+    temporal_ok = (
+        not (cited_ids & blacklisted)
+        and all(
+            evidence[evidence_id].role == EvidenceRole.CAUSAL_INPUT
+            and evidence[evidence_id].published_at <= manifest.evidence_cutoff
+            and classify_event(
+                evidence[evidence_id].published_at, expected_session
+            ).eligible_same_day_cause
+            for evidence_id in cited_ids
+            if evidence_id in evidence
+        )
+        and mechanical_snapshot_ok
+    )
     session_ok = (
         report.trade_date == manifest.trade_date
         and report.timezone_label == expected_session.timezone_label
@@ -169,7 +202,11 @@ def grade_report(
         GraderCheck(
             name="temporal_integrity",
             passed=temporal_ok,
-            detail=f"blacklisted_citations={sorted(cited_ids & blacklisted)}",
+            detail=(
+                f"blacklisted_citations={sorted(cited_ids & blacklisted)}; "
+                f"mechanical_citations={sorted(mechanical_cited_ids)}; "
+                f"mechanical_snapshot_ok={mechanical_snapshot_ok}"
+            ),
         ),
         GraderCheck(
             name="session_integrity",

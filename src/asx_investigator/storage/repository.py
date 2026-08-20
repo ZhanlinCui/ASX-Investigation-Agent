@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS provider_calls (
     status TEXT NOT NULL,
     coverage TEXT NOT NULL,
     retrieved_at TEXT NOT NULL,
+    as_of TEXT,
     provenance_json TEXT NOT NULL,
     error_code TEXT,
     source_version TEXT,
@@ -198,6 +199,8 @@ class SQLiteCaseRepository:
                 await connection.execute(
                     "ALTER TABLE provider_calls ADD COLUMN artifact_id TEXT"
                 )
+            if "as_of" not in {str(row[1]) for row in provider_call_columns}:
+                await connection.execute("ALTER TABLE provider_calls ADD COLUMN as_of TEXT")
             await connection.commit()
 
     async def journal_mode(self) -> str:
@@ -370,6 +373,7 @@ class SQLiteCaseRepository:
         coverage: str,
         retrieved_at: datetime,
         provenance: dict[str, str],
+        as_of: datetime | None = None,
         error_code: str | None = None,
         source_version: str | None = None,
         artifact_id: str | None = None,
@@ -378,9 +382,9 @@ class SQLiteCaseRepository:
             await connection.execute("PRAGMA foreign_keys=ON")
             await connection.execute(
                 """INSERT INTO provider_calls
-                (version_id, provider, operation, status, coverage, retrieved_at,
+                (version_id, provider, operation, status, coverage, retrieved_at, as_of,
                  provenance_json, error_code, source_version, artifact_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     version_id,
                     provider,
@@ -388,6 +392,7 @@ class SQLiteCaseRepository:
                     status,
                     coverage,
                     retrieved_at.isoformat(),
+                    as_of.isoformat() if as_of is not None else None,
                     json.dumps(provenance, sort_keys=True),
                     error_code,
                     source_version,
@@ -413,6 +418,7 @@ class SQLiteCaseRepository:
                 "status": str(row["status"]),
                 "coverage": str(row["coverage"]),
                 "retrieved_at": str(row["retrieved_at"]),
+                "as_of": str(row["as_of"]) if row["as_of"] is not None else None,
                 "provenance": json.loads(str(row["provenance_json"])),
                 "error_code": row["error_code"],
                 "source_version": row["source_version"],
