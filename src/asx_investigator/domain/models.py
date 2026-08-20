@@ -31,6 +31,27 @@ class InvestigationStatus(StrEnum):
     FAILED_RECOVERABLE = "FAILED_RECOVERABLE"
 
 
+class InvestigationOutcome(StrEnum):
+    EXPLAINED = "EXPLAINED"
+    NO_IDENTIFIABLE_CATALYST = "NO_IDENTIFIABLE_CATALYST"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+    INCOMPLETE_DATA = "INCOMPLETE_DATA"
+
+
+class HypothesisStatus(StrEnum):
+    LEADING = "LEADING"
+    ALTERNATIVE = "ALTERNATIVE"
+    MECHANICAL = "MECHANICAL"
+    REJECTED = "REJECTED"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+
+
+class ValidationStatus(StrEnum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    NOT_AVAILABLE = "NOT_AVAILABLE"
+
+
 class InstrumentIdentity(BaseModel):
     asx_code: str
     company_name: str
@@ -109,10 +130,62 @@ class PrimaryAssessment(BaseModel):
     summary: str
 
 
+class Hypothesis(BaseModel):
+    hypothesis_id: str
+    rank: int = Field(ge=1, le=5)
+    status: HypothesisStatus
+    statement: str
+    expected_signature: str | None = None
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    contradicting_evidence_ids: list[str] = Field(default_factory=list)
+    validation_ids: list[str] = Field(default_factory=list)
+
+
+class ValidationResult(BaseModel):
+    validation_id: str
+    kind: str
+    status: ValidationStatus
+    summary: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class CoverageGap(BaseModel):
+    gap_id: str
+    capability: str
+    provider: str
+    reason: str
+    impact: str
+    retryable: bool = False
+
+
+class SourceConflict(BaseModel):
+    conflict_id: str
+    field: str
+    primary_source: str
+    primary_value: str
+    secondary_source: str
+    secondary_value: str
+    resolution: str
+    material: bool = True
+
+
+class CompletenessAssessment(BaseModel):
+    score: float = Field(ge=0, le=1)
+    status: str
+    required_capabilities: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+
+
+class TraceReference(BaseModel):
+    event_count: int = Field(ge=0)
+    last_sequence: int = Field(ge=0)
+
+
 class InvestigationReport(BaseModel):
     case_id: str
     run_id: str
     status: InvestigationStatus
+    outcome: InvestigationOutcome = InvestigationOutcome.INSUFFICIENT_EVIDENCE
     ticker: str
     trade_date: date
     timezone_label: str
@@ -123,5 +196,16 @@ class InvestigationReport(BaseModel):
     evidence: list[EvidenceItem] = Field(default_factory=list)
     confidence: ConfidenceAssessment
     coverage_status: str
+    completeness: CompletenessAssessment = Field(
+        default_factory=lambda: CompletenessAssessment(score=0, status="UNKNOWN")
+    )
+    hypotheses: list[Hypothesis] = Field(default_factory=list)
+    validation_results: list[ValidationResult] = Field(default_factory=list)
+    coverage_gaps: list[CoverageGap] = Field(default_factory=list)
+    conflicts: list[SourceConflict] = Field(default_factory=list)
+    source_policy_version: str = "phase2-v1"
+    model_configuration: dict[str, str] = Field(default_factory=dict)
+    trace_reference: TraceReference | None = None
+    parent_case_id: str | None = None
+    case_version: int = Field(default=1, ge=1)
     trace: list[dict[str, str]] = Field(default_factory=list)
-

@@ -1,0 +1,131 @@
+# Phase 2: Evidence-Complete Live Investigation
+
+**Status:** In implementation  
+**Branch:** `phase2/evidence-complete-live`  
+**Model:** `gemini-3-flash-preview`, configurable through `GEMINI_MODEL`
+
+## Goal
+
+Turn the Phase 1 recorded vertical slice into a durable, evidence-complete investigation product that can run configured live cases, explain its gaps, and pass a point-in-time evaluation suite.
+
+## Architectural decision
+
+The runtime is one typed state machine:
+
+```text
+request
+  -> resolve instrument and ASX session
+  -> acquire and reconcile market data
+  -> test mechanical explanations
+  -> discover, freeze and retrieve evidence
+  -> generate ranked hypotheses
+  -> perform at most one targeted retrieval
+  -> challenge the leading hypothesis
+  -> run deterministic validation
+  -> apply confidence caps and abstention
+  -> persist and publish one report state
+```
+
+Gemini receives a bounded evidence packet and returns structured hypotheses. It cannot fetch data, calculate a market fact, assign confidence or cite an unknown evidence ID. Deterministic code remains authoritative for timing, calculations, citations, coverage and release decisions.
+
+## Global constraints
+
+- Monetary output is AUD.
+- User-facing time is AEST or AEDT through `Australia/Sydney`.
+- Completed case versions and evidence artifacts are immutable.
+- Provider failure and a successful empty response are distinct states.
+- Post-move evidence cannot support an earlier causal claim.
+- A model failure results in `INSUFFICIENT_EVIDENCE`, not a heuristic cause.
+- The live historical window is 12 months unless point-in-time source coverage proves otherwise.
+- No ASX page scraping, automatic cross-case learning, authentication or trading features.
+
+## Milestone checklist
+
+### P2.0: Contracts and documentation
+
+- [x] Add investigation lifecycle and outcome as separate enums.
+- [x] Add provider outcomes, hypotheses, validations, gaps, conflicts, completeness and trace references to the domain contract.
+- [x] Keep existing report fields readable while adding Phase 2 fields.
+- [x] Align the master plan, product requirements, README and API schema.
+- [x] Gate: schema round-trip and backward-compatibility tests pass.
+
+### P2.1: Durable case memory
+
+- [ ] Create SQLite WAL schema for cases, versions, events, provider calls and evidence indexes.
+- [ ] Store report and request payloads as schema-versioned JSON.
+- [ ] Make event sequence append-only and replayable from a sequence number.
+- [ ] Requeue recoverable runs at application startup.
+- [ ] Add child versions for typed refinements; never update a completed version in place.
+- [ ] Store raw bytes in a SHA-256 content-addressed artifact directory.
+- [ ] Gate: restart, event replay, version lineage, immutability and artifact deduplication tests pass.
+
+### P2.2: Live market truth
+
+- [ ] Wrap EODHD and Marketstack in the same typed market-data interface.
+- [ ] Use EODHD when complete; use Marketstack only on empty or failed primary coverage.
+- [ ] Compare sources when both are available. Record OHLC differences above 0.5% and volume differences above 5%.
+- [ ] Preserve selected source, rejected values and conflict reason.
+- [ ] Add corporate-action and benchmark-context interfaces without inferring unavailable values.
+- [ ] Gate: provider contract, fallback, disagreement and live-window tests pass.
+
+### P2.3: Evidence and context
+
+- [ ] Accept PDF and text up to 20 MB and safe HTTP/HTTPS URLs.
+- [ ] Reject private/reserved hosts, excessive redirects, unsupported MIME types and oversized responses.
+- [ ] Freeze content before parsing; persist source metadata and hash.
+- [ ] Extract page-aware PDF passages and block-aware HTML/text passages.
+- [ ] Deduplicate identical content and shared origins.
+- [ ] Index passages with SQLite FTS5 and filter by ticker, date, role and authority.
+- [ ] Assemble at most 12 snippets of at most 1,800 characters each.
+- [ ] Gate: exact locator, temporal eligibility, injection isolation, deduplication and context-budget tests pass.
+
+### P2.4: Controlled investigation
+
+- [ ] Persist stage checkpoints and explicit transition events.
+- [ ] First model role returns up to five ranked, materially different hypotheses.
+- [ ] One targeted retrieval is allowed only when a structured evidence gap names its purpose and query.
+- [ ] Second model role challenges the leading hypothesis and returns stronger alternatives or violations.
+- [ ] Reject unknown evidence IDs and unsupported material claims.
+- [ ] Separate lifecycle from `EXPLAINED`, `NO_IDENTIFIABLE_CATALYST`, `INSUFFICIENT_EVIDENCE` and `INCOMPLETE_DATA`.
+- [ ] Gate: recorded, after-close, conflicting-source, no-catalyst and model-failure cases terminate correctly.
+
+### P2.5: Confidence and abstention
+
+- [ ] Store claim support, selected-hypothesis strength and investigation completeness separately.
+- [ ] Compute bands from source authority, timing, market fit, corroboration, conflict, alternatives and coverage.
+- [ ] Apply explicit caps for missing primary evidence, incomplete disclosure coverage, material conflict and missing timing resolution.
+- [ ] Render the band and cap reasons; do not describe the internal score as probability.
+- [ ] Gate: monotonic feature, cap and abstention tests pass.
+
+### P2.6: Evaluation
+
+- [ ] Define a versioned case-manifest schema and deterministic grader result schema.
+- [ ] Build 24 development/regression cases across disclosure, mechanical, sector, commodity, macro, multi-catalyst, ambiguous and no-catalyst classes.
+- [ ] Keep 12 holdout labels outside the repository and load them from `ASX_EVAL_HOLDOUT_ROOT`.
+- [ ] Add provider, temporal, grounding, attribution, abstention, latency and cost graders.
+- [ ] Publish JSON and Markdown reports with raw counts and per-case failures.
+- [ ] Gate: all hard release gates pass; no unrun live gate is reported as passed.
+
+### P2.7: Workbench and release
+
+- [ ] Add case archive, persisted running stages and retry controls.
+- [ ] Add hypotheses, evidence passage viewer, gaps, conflicts, caps, completeness and trace.
+- [ ] Add typed refinement and parent-child version comparison.
+- [ ] Keep JSON, Markdown and UI on the same report schema.
+- [ ] Add CI for Python tests/lint, frontend tests/build and recorded evaluation smoke.
+- [ ] Gate: clean checkout verification and credentialed live smoke pass, or the release remains recorded-only.
+
+## Public API additions
+
+- `GET /api/v1/investigations`
+- `POST /api/v1/investigations/{case_id}/versions`
+- `POST /api/v1/investigations/{case_id}/retry`
+- `POST /api/v1/sources/upload`
+- `POST /api/v1/sources/fetch`
+- `GET /api/v1/evidence/{evidence_id}/content`
+
+Existing create, get, events, JSON and Markdown behaviour remains available. SSE events have a monotonically increasing sequence and can replay from `after_sequence`.
+
+## Completion evidence
+
+The Phase 2 release record must contain the code commit, source-policy version, model configuration, provider mode, full test output, evaluation report, known limitations and live-gate status.
