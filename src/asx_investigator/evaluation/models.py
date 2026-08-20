@@ -11,29 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from asx_investigator.domain.models import InvestigationReport
 
 
-def _model_usage_cost_hash(
-    *,
-    model_configuration: dict[str, str],
-    pricing_schedule_version: str,
-    pricing_schedule_hash: str,
-    input_tokens: int,
-    output_tokens: int,
-    measured_cost_aud: float,
-) -> str:
-    payload = {
-        "schema_version": "model-usage-cost-v1",
-        "model_configuration": model_configuration,
-        "pricing_schedule_version": pricing_schedule_version,
-        "pricing_schedule_hash": pricing_schedule_hash,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "measured_cost_aud": measured_cost_aud,
-    }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-
-
 def _pricing_schedule_hash(
     *,
     version: str,
@@ -68,7 +45,7 @@ class EvalCaseManifest(BaseModel):
     abstention_policy: Literal["REQUIRED", "ALLOWED", "FORBIDDEN"]
     expected_outcome: str
     max_latency_ms: int = Field(default=30_000, gt=0)
-    max_cost_aud: float = Field(default=1.0, ge=0)
+    max_cost_aud: Decimal = Field(default=Decimal("1.0"), ge=0)
 
 
 class EvalSuiteManifest(BaseModel):
@@ -90,7 +67,7 @@ class CaseEvaluation(BaseModel):
     checks: list[GraderCheck]
     raw_counts: dict[str, int]
     latency_ms: int
-    estimated_cost_aud: float
+    estimated_cost_aud: Decimal
     confidence_band: Literal["LOW", "MEDIUM", "HIGH"] | None = None
     abstention_policy: Literal["REQUIRED", "ALLOWED", "FORBIDDEN"] | None = None
 
@@ -159,7 +136,7 @@ class GoldCaseManifest(BaseModel):
         "INCOMPLETE_DATA",
     ] = "EXPLAINED"
     max_latency_ms: int = Field(default=30_000, gt=0)
-    max_cost_aud: float = Field(default=1.0, ge=0)
+    max_cost_aud: Decimal = Field(default=Decimal("1.0"), ge=0)
 
     @model_validator(mode="before")
     @classmethod
@@ -203,7 +180,7 @@ class GoldExecutionCase(BaseModel):
     report: InvestigationReport
     evaluation: CaseEvaluation | None = None
     latency_ms: int | None = Field(default=None, ge=0)
-    estimated_cost_aud: float | None = Field(default=None, ge=0)
+    estimated_cost_aud: Decimal | None = Field(default=None, ge=0)
     cost_artifact_hashes: list[str] = Field(default_factory=list)
 
 
@@ -255,6 +232,31 @@ class AudPricingSchedule(BaseModel):
         ) / Decimal("1000000")
 
 
+def _model_usage_cost_hash(
+    *,
+    model_configuration: dict[str, str],
+    pricing_schedule: AudPricingSchedule,
+    input_tokens: int,
+    output_tokens: int,
+    thinking_tokens: int,
+    measured_cost_aud: Decimal,
+) -> str:
+    """Hash all immutable inputs used to derive an AUD usage cost."""
+
+    payload = {
+        "schema_version": "model-usage-cost-v1",
+        "model_configuration": model_configuration,
+        "pricing_schedule": pricing_schedule.model_dump(mode="json"),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "thinking_tokens": thinking_tokens,
+        "measured_cost_aud": str(measured_cost_aud),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 class ModelUsageCostArtifact(BaseModel):
     """An immutable, priced model-usage observation for release evaluation."""
 
@@ -262,11 +264,11 @@ class ModelUsageCostArtifact(BaseModel):
 
     schema_version: Literal["model-usage-cost-v1"] = "model-usage-cost-v1"
     model_configuration: dict[str, str]
-    pricing_schedule_version: str = Field(min_length=1, max_length=120)
-    pricing_schedule_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    pricing_schedule: AudPricingSchedule
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
-    measured_cost_aud: float = Field(gt=0)
+    thinking_tokens: int = Field(default=0, ge=0)
+    measured_cost_aud: Decimal = Field(gt=0)
     artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @classmethod
@@ -274,18 +276,21 @@ class ModelUsageCostArtifact(BaseModel):
         cls,
         *,
         model_configuration: dict[str, str],
-        pricing_schedule_version: str,
-        pricing_schedule_hash: str,
+        pricing_schedule: AudPricingSchedule,
         input_tokens: int,
         output_tokens: int,
-        measured_cost_aud: float,
+        thinking_tokens: int = 0,
     ) -> ModelUsageCostArtifact:
+        measured_cost_aud = pricing_schedule.cost_for(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens + thinking_tokens,
+        )
         payload = {
             "model_configuration": model_configuration,
-            "pricing_schedule_version": pricing_schedule_version,
-            "pricing_schedule_hash": pricing_schedule_hash,
+            "pricing_schedule": pricing_schedule,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            "thinking_tokens": thinking_tokens,
             "measured_cost_aud": measured_cost_aud,
         }
         return cls(
@@ -295,17 +300,37 @@ class ModelUsageCostArtifact(BaseModel):
 
     @model_validator(mode="after")
     def validate_artifact_hash(self) -> ModelUsageCostArtifact:
+        expected_cost = self.pricing_schedule.cost_for(
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens + self.thinking_tokens,
+        )
+        if self.measured_cost_aud != expected_cost:
+            raise ValueError(
+                "Model usage cost does not match its AUD pricing schedule and token counts"
+            )
         expected = _model_usage_cost_hash(
             model_configuration=self.model_configuration,
-            pricing_schedule_version=self.pricing_schedule_version,
-            pricing_schedule_hash=self.pricing_schedule_hash,
+            pricing_schedule=self.pricing_schedule,
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
+            thinking_tokens=self.thinking_tokens,
             measured_cost_aud=self.measured_cost_aud,
         )
         if self.artifact_hash != expected:
             raise ValueError("Model usage cost artifact hash does not match its contents")
         return self
+
+    @property
+    def pricing_schedule_version(self) -> str:
+        """Compatibility projection for audit consumers of prior artifacts."""
+
+        return self.pricing_schedule.version
+
+    @property
+    def pricing_schedule_hash(self) -> str:
+        """Compatibility projection for audit consumers of prior artifacts."""
+
+        return self.pricing_schedule.artifact_hash
 
 
 class GoldExecutionReport(BaseModel):

@@ -6,6 +6,7 @@ import json
 import os
 import re
 from collections.abc import Mapping
+from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
 
@@ -381,11 +382,11 @@ async def run_external_gold(
 def _consume_measured_case_cost(
     reasoner: InvestigationReasoner | None,
     model_configuration: dict[str, str],
-) -> tuple[float, list[str]] | None:
+) -> tuple[Decimal, list[str]] | None:
     """Consume immutable post-call cost records; never trust a CLI estimate."""
 
     if reasoner is None:
-        return 0.0, []
+        return Decimal("0"), []
     consume = getattr(reasoner, "consume_model_usage_cost_artifacts", None)
     if not callable(consume):
         return None
@@ -393,12 +394,27 @@ def _consume_measured_case_cost(
     if not isinstance(records, list) or not records:
         return None
     try:
-        artifacts = [ModelUsageCostArtifact.model_validate(item) for item in records]
+        artifacts = [
+            ModelUsageCostArtifact.model_validate(
+                item.model_dump(mode="json")
+                if isinstance(item, ModelUsageCostArtifact)
+                else item
+            )
+            for item in records
+        ]
     except ValueError:
         return None
     if any(artifact.model_configuration != model_configuration for artifact in artifacts):
         return None
-    return sum(artifact.measured_cost_aud for artifact in artifacts), [
+    if any(
+        artifact.pricing_schedule.version
+        != model_configuration.get("pricing_schedule_version")
+        or artifact.pricing_schedule.artifact_hash
+        != model_configuration.get("pricing_schedule_hash")
+        for artifact in artifacts
+    ):
+        return None
+    return sum((artifact.measured_cost_aud for artifact in artifacts), Decimal("0")), [
         artifact.artifact_hash for artifact in artifacts
     ]
 

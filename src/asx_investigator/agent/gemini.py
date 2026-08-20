@@ -184,31 +184,38 @@ class GeminiInvestigationReasoner:
             return
         input_tokens = self._usage_token_count(usage_metadata, "prompt_token_count")
         output_tokens = self._usage_token_count(usage_metadata, "candidates_token_count")
-        if input_tokens is None or output_tokens is None:
+        thinking_tokens = self._usage_token_count(
+            usage_metadata, "thoughts_token_count", default=0
+        )
+        if input_tokens is None or output_tokens is None or thinking_tokens is None:
             return
         cost = self._pricing_schedule.cost_for(
             input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            output_tokens=output_tokens + thinking_tokens,
         )
         if cost <= 0:
             return
         self._usage_cost_artifacts.append(
             ModelUsageCostArtifact.recorded(
                 model_configuration=self.model_configuration,
-                pricing_schedule_version=self._pricing_schedule.version,
-                pricing_schedule_hash=self._pricing_schedule.artifact_hash,
+                pricing_schedule=self._pricing_schedule,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                measured_cost_aud=float(cost),
+                thinking_tokens=thinking_tokens,
             )
         )
 
     @staticmethod
-    def _usage_token_count(usage_metadata: object, field: str) -> int | None:
+    def _usage_token_count(
+        usage_metadata: object, field: str, *, default: int | None = None
+    ) -> int | None:
+        missing = object()
         if isinstance(usage_metadata, dict):
-            value = usage_metadata.get(field)
+            value = usage_metadata.get(field, missing)
         else:
-            value = getattr(usage_metadata, field, None)
+            value = getattr(usage_metadata, field, missing)
+        if value is missing or value is None:
+            return default
         if isinstance(value, bool):
             return None
         if isinstance(value, int) and value >= 0:

@@ -6,7 +6,7 @@ Recorded on 21 August 2026 from the Phase 3 release worktree. This record distin
 
 | Check | Status | Result |
 |---|---|---|
-| `../../.venv/bin/python -m pytest -q` | PASS | 284 passed; 6 third-party deprecation warnings |
+| `../../.venv/bin/python -m pytest -q` | PASS | 291 passed; 6 third-party deprecation warnings |
 | `../../.venv/bin/ruff check src tests evals` | PASS | All checks passed |
 | `git diff --check` | PASS | No whitespace errors |
 | `cd web && pnpm test -- --run` | PASS | 6 tests passed |

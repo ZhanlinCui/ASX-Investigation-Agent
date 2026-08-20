@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 from asx_investigator.agent.gemini import GeminiInvestigationReasoner
@@ -127,11 +128,36 @@ async def test_gemini_reasoner_records_hash_bound_usage_cost_after_structured_ca
     [artifact] = reasoner.consume_model_usage_cost_artifacts()
     assert artifact.input_tokens == 100
     assert artifact.output_tokens == 20
+    assert artifact.thinking_tokens == 0
     assert artifact.measured_cost_aud > 0
     assert artifact.pricing_schedule_version == "gemini-aud-test-v1"
     assert artifact.pricing_schedule_hash
     assert reasoner.model_configuration["pricing_schedule_hash"] == artifact.pricing_schedule_hash
     assert artifact.artifact_hash
+
+
+async def test_gemini_reasoner_bills_thinking_tokens_as_output_usage() -> None:
+    models = FakeModels()
+    models.responses[0].usage_metadata = SimpleNamespace(
+        prompt_token_count=100,
+        candidates_token_count=20,
+        thoughts_token_count=1_000,
+    )
+    client = SimpleNamespace(aio=SimpleNamespace(models=models))
+    reasoner = GeminiInvestigationReasoner(
+        Settings(
+            gemini_pricing_schedule_version="gemini-aud-test-v1",
+            gemini_input_aud_per_million_tokens="1.50",
+            gemini_output_aud_per_million_tokens="6.00",
+        ),
+        client=client,
+    )
+
+    await reasoner.generate(packet())
+
+    [artifact] = reasoner.consume_model_usage_cost_artifacts()
+    assert artifact.thinking_tokens == 1_000
+    assert artifact.measured_cost_aud == Decimal("0.00627")
 
 
 async def test_gemini_reasoner_leaves_cost_artifacts_empty_without_usage_or_pricing() -> None:

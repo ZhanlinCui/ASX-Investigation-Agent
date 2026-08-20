@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 
 from asx_investigator.confidence.calibration import RELEASE_CHECK_NAMES, CalibrationRecord
@@ -58,9 +59,16 @@ def grade_report(
     report: InvestigationReport,
     *,
     latency_ms: int,
-    estimated_cost_aud: float,
+    estimated_cost_aud: Decimal | float | int,
     ledger_reproducible: bool | None = None,
 ) -> CaseEvaluation:
+    try:
+        observed_cost_aud = Decimal(str(estimated_cost_aud))
+    except (InvalidOperation, ValueError) as error:
+        raise ValueError("estimated_cost_aud must be a finite AUD value") from error
+    if not observed_cost_aud.is_finite() or observed_cost_aud < 0:
+        raise ValueError("estimated_cost_aud must be a finite non-negative AUD value")
+
     evidence = {item.evidence_id: item for item in report.evidence}
     material = [claim for claim in report.claims if claim.claim_type in MATERIAL_CLAIMS]
     cited_ids = {evidence_id for claim in material for evidence_id in claim.supporting_evidence_ids}
@@ -288,8 +296,11 @@ def grade_report(
         ),
         GraderCheck(
             name="cost",
-            passed=estimated_cost_aud <= manifest.max_cost_aud,
-            detail=(f"observed_aud={estimated_cost_aud:.6f}; max_aud={manifest.max_cost_aud:.6f}"),
+            passed=observed_cost_aud <= manifest.max_cost_aud,
+            detail=(
+                f"observed_aud={observed_cost_aud:.6f}; "
+                f"max_aud={manifest.max_cost_aud:.6f}"
+            ),
         ),
     ]
     passed_count = sum(check.passed for check in checks)
@@ -299,7 +310,7 @@ def grade_report(
         checks=checks,
         raw_counts={"passed": passed_count, "failed": len(checks) - passed_count},
         latency_ms=latency_ms,
-        estimated_cost_aud=estimated_cost_aud,
+        estimated_cost_aud=observed_cost_aud,
         confidence_band=report.confidence.band,
         abstention_policy=manifest.abstention_policy,
     )
