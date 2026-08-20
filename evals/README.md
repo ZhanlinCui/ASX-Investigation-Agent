@@ -37,14 +37,13 @@ The release remains recorded-only until 24 independently adjudicated point-in-ti
 
 ## External agent execution
 
-An external frozen-corpus run requires `GEMINI_API_KEY` and an audited non-zero
-per-case model cost in AUD. Pass the latter explicitly so the runner cannot
-silently treat an unknown model cost as zero:
+An external frozen-corpus run requires `GEMINI_API_KEY` plus immutable model
+usage artifacts priced with a versioned AUD schedule tied to the deployed model
+configuration. The runner never accepts a caller-supplied cost estimate:
 
 ```bash
-.venv/bin/python evals/run_gold_evals.py --format markdown \
-  --estimated-case-cost-aud 0.01
+.venv/bin/python evals/run_gold_evals.py --format markdown
 ```
 
-Without a configured model, an external corpus, or a known cost, the affected
-external gate remains `NOT_RUN`.
+Without a configured model, an external corpus, or immutable measured cost
+artifacts, the affected external gate remains `NOT_RUN`.

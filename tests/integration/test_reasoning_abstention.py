@@ -19,6 +19,7 @@ from asx_investigator.providers.live import DataProviderUnavailable
 from asx_investigator.providers.market import CorporateAction
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.recorded import RecordedToolGateway
+from asx_investigator.report.public import public_report_payload
 
 SYDNEY = ZoneInfo("Australia/Sydney")
 
@@ -136,6 +137,26 @@ class PositiveMechanicalGateway(CountingGateway):
                     announced_at=datetime(2026, 8, 20, 8, 30, tzinfo=SYDNEY),
                     adjustment_factor=2.0,
                     source_id="action-1",
+                )
+            ],
+        )
+
+
+class IntraSessionMechanicalGateway(CountingGateway):
+    async def get_corporate_actions(self, ticker, trade_date):
+        return ProviderOutcome(
+            status=ProviderStatus.SUCCESS,
+            provider="OFFICIAL_ACTIONS",
+            retrieved_at=datetime(2026, 8, 20, 15, 30, tzinfo=SYDNEY),
+            as_of=datetime(2026, 8, 20, 15, 30, tzinfo=SYDNEY),
+            coverage="COMPLETE",
+            data=[
+                CorporateAction(
+                    action_type="SPLIT",
+                    effective_date=trade_date,
+                    announced_at=datetime(2026, 8, 20, 15, 0, tzinfo=SYDNEY),
+                    adjustment_factor=2.0,
+                    source_id="intra-session-action",
                 )
             ],
         )
@@ -376,6 +397,31 @@ async def test_positive_corporate_action_becomes_a_cited_mechanical_explanation(
     assert report.hypotheses[0].driver_label == "MECHANICAL"
     assert report.claims[0].supporting_evidence_ids == ["M1"]
     assert report.evidence[0].locator == "action-1"
+
+
+async def test_mechanism_timestamp_uses_actual_intra_session_evidence_availability() -> None:
+    report = await InvestigationService(IntraSessionMechanicalGateway()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+    mechanical = next(
+        test for test in report.mechanism_tests if test.mechanism == "MECHANICAL"
+    )
+    supporting = [
+        assertion
+        for assertion in report.assertions
+        if assertion.assertion_id in mechanical.supporting_assertion_ids
+    ]
+    public = public_report_payload(report)
+    public_mechanical = next(
+        test for test in public["mechanism_tests"] if test["mechanism"] == "MECHANICAL"
+    )
+
+    assert mechanical.created_at.isoformat() == "2026-08-20T15:30:00+10:00"
+    assert all(
+        mechanical.created_at >= max(assertion.published_at, assertion.retrieved_at)
+        for assertion in supporting
+    )
+    assert public_mechanical["created_at"] == "2026-08-20T15:30:00+10:00"
 
 
 async def test_retroactively_retrieved_effective_action_cannot_explain_same_day_move() -> None:

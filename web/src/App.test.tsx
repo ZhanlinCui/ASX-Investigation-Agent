@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import App, { ReportView, type Report } from "./App";
+import App, { loadVersionReport, ReportView, VersionComparison, type Report } from "./App";
 import { toSydneyIso } from "./time";
 
 describe("App", () => {
@@ -57,6 +57,23 @@ describe("App", () => {
     expect(html).not.toContain(marker);
     expect(html).not.toContain("Open original source");
     expect(html).toContain("Open exact passage");
+  });
+
+  it("loads and renders a scoped public parent-version decision report", async () => {
+    const parent = { ...completedReport(), run_id: "VERSION-1", case_version: 1, assessment: { primary_claim_id: "C1", summary: "Parent validated issuer decision." } };
+    const current = { ...completedReport(), run_id: "VERSION-2", case_version: 2, parent_version_id: "VERSION-1", assessment: { primary_claim_id: undefined, summary: "Child abstained after refinement." }, evidence: [] };
+    const fetcher = async (url: RequestInfo | URL) => ({
+      ok: true,
+      json: async () => parent,
+      url,
+    }) as Response;
+
+    const loaded = await loadVersionReport("CASE-1", "VERSION-1", fetcher);
+    const html = renderToStaticMarkup(<VersionComparison current={current} parent={loaded!} />);
+
+    expect(loaded?.run_id).toBe("VERSION-1");
+    expect(html).toContain("Parent validated issuer decision.");
+    expect(html).toContain("Parent decision artifacts");
   });
 });
 

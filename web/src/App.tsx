@@ -58,6 +58,15 @@ function aud(value?: number) { return value === undefined ? "—" : `AUD ${new I
 function human(value: string) { return value.replaceAll("_", " "); }
 function confidenceTone(band?: string) { return band === "HIGH" ? "high" : band === "MEDIUM" ? "medium" : "low"; }
 
+export async function loadVersionReport(
+  caseId: string,
+  versionId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<Report | null> {
+  const response = await fetcher(`${apiBase}/api/v1/investigations/${caseId}/versions/${versionId}`);
+  return response.ok ? (await response.json()) as Report : null;
+}
+
 export default function App() {
   const [ticker, setTicker] = useState("BHP");
   const [tradeDate, setTradeDate] = useState("2026-08-20");
@@ -171,17 +180,21 @@ function EmptyState({ onRecorded }: { onRecorded: () => void }) {
 export function ReportView({ report, onRefined }: { report: Report; onRefined: (caseId: string) => void }) {
   const [selected, setSelected] = useState<Evidence | null>(null);
   const [passage, setPassage] = useState<{ passage: string; locator?: string; page?: number } | null>(null);
-  const [versions, setVersions] = useState<ArchiveItem[]>([]);
+  const [parentReport, setParentReport] = useState<Report | null>(null);
   const primary = report.claims.find((claim) => claim.claim_id === report.assessment.primary_claim_id);
-  useEffect(() => { void fetch(`${apiBase}/api/v1/investigations/${report.case_id}/versions`).then((response) => response.json()).then((payload: { items: ArchiveItem[] }) => setVersions(payload.items)); }, [report.case_id]);
+  useEffect(() => {
+    if (!report.parent_version_id) { setParentReport(null); return; }
+    void loadVersionReport(report.case_id, report.parent_version_id)
+      .then(setParentReport)
+      .catch(() => setParentReport(null));
+  }, [report.case_id, report.parent_version_id]);
   async function inspect(item: Evidence) { setSelected(item); setPassage(null); const response = await fetch(`${apiBase}${item.content_endpoint}`); if (response.ok) setPassage(await response.json()); }
   function inspectAssertion(assertion: Assertion) { const evidence = report.evidence.find((item) => item.evidence_id === assertion.evidence_id); if (evidence) void inspect(evidence); }
   async function refine(options: { primary_only?: boolean; excluded_evidence_ids?: string[] }) { const response = await fetch(`${apiBase}/api/v1/investigations/${report.case_id}/versions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(options) }); if (response.ok) onRefined(((await response.json()) as { case_id: string }).case_id); }
-  const parent = versions.find((item) => item.version_id === report.parent_version_id);
   return <div className="report-stack">
     <section className="report-head"><div><p className="eyebrow">CASE RESULT · VERSION {report.case_version}</p><h2>{report.instrument.company_name} <span>({report.ticker})</span></h2><p>{report.trade_date} · {report.timezone_label} · {report.instrument.sector ?? "ASX-listed equity"}</p><div className="outcome-line"><span>{human(report.outcome)}</span><span>{human(report.status)}</span></div></div><div className={`confidence ${confidenceTone(report.confidence.band)}`}><span>Selected hypothesis</span><strong>{report.confidence.band}</strong><small>{report.confidence.calibration_status} · {report.confidence.rule_version}</small></div></section>
     <div className="report-actions"><a href={`${apiBase}/api/v1/investigations/${report.case_id}?format=markdown`}><DownloadSimple size={15} /> Export Markdown</a><button onClick={() => void refine({ primary_only: true })}><FileText size={15} /> Primary-sources-only child</button></div>
-    {parent && <section className="comparison-bar"><b>Compared with v{parent.version_number}</b><span>{human(parent.outcome ?? parent.status)} → {human(report.outcome)}</span><span>{parent.confidence_band ?? "Not published"} → {report.confidence.band}</span><span>{parent.evidence_count ?? "—"} → {report.evidence.length} evidence items</span></section>}
+    {parentReport && <VersionComparison current={report} parent={parentReport} />}
     <section className="metric-grid"><Metric label="Close-to-close" value={percent(report.market_move?.close_return_pct)} emphasis /><Metric label="Opening gap" value={percent(report.market_move?.open_gap_pct)} /><Metric label="Open to close" value={percent(report.market_move?.open_to_close_pct)} /><Metric label="Turnover" value={aud(report.market_move?.turnover_aud)} /><Metric label="Market relative" value={percent(report.market_move?.market_relative_return_pct ?? undefined)} /></section>
     <section className="assessment-card"><div className="section-kicker"><ChartLineUp size={18} /> Leading assessment</div><h3>{report.assessment.summary}</h3><div className="assessment-footer"><span className="chip">{primary?.claim_type ?? "UNRESOLVED"}</span><span>Coverage: {human(report.coverage_status)}</span><span>Completeness: {human(report.completeness.status)}</span>{report.confidence.applied_caps.map((cap) => <span className="caution" key={cap}>{human(cap)}</span>)}</div></section>
     <section className="analysis-grid"><Hypotheses items={report.hypotheses} validations={report.validation_results} /><ConfidencePanel report={report} /></section>
@@ -191,6 +204,10 @@ export function ReportView({ report, onRefined }: { report: Report; onRefined: (
     <section id="method" className="method-note"><CheckCircle size={18} /><p>Confidence is a rule-governed evidence-strength band, not a probability. Completeness and claim support are assessed separately.</p></section>
     {selected && <div className="passage-backdrop" role="presentation" onClick={() => setSelected(null)}><aside className="passage-drawer" role="dialog" aria-modal="true" aria-label="Evidence passage" onClick={(event) => event.stopPropagation()}><button className="drawer-close" onClick={() => setSelected(null)} aria-label="Close passage"><X size={18} /></button><span className="chip">{selected.evidence_id}</span><h3>{selected.title}</h3><p className="drawer-meta">{human(selected.authority)} · {passage?.locator ?? selected.locator ?? "No locator"}</p><blockquote>{passage?.passage ?? "Exact passage unavailable for this case version."}</blockquote><div className="drawer-actions"><button onClick={() => void refine({ excluded_evidence_ids: [selected.evidence_id] })}>Exclude in child version</button></div></aside></div>}
   </div>;
+}
+
+export function VersionComparison({ current, parent }: { current: Report; parent: Report }) {
+  return <section className="comparison-bar" aria-label="Version comparison"><b>Compared with v{parent.case_version}</b><span>{human(parent.outcome)} → {human(current.outcome)}</span><span>{parent.confidence.band} → {current.confidence.band}</span><span>{parent.evidence.length} → {current.evidence.length} evidence items</span><p><strong>Parent decision artifacts</strong> · {parent.assessment.summary}</p><small>Assertions {parent.assertions.map((item) => item.assertion_id).join(", ") || "none"} · Mechanisms {parent.mechanism_tests.map((item) => `${human(item.mechanism)} ${item.status}`).join(", ") || "none"}</small></section>;
 }
 
 function Hypotheses({ items, validations }: { items: Hypothesis[]; validations: Validation[] }) { return <section className="hypothesis-card"><h3>Ranked hypotheses</h3>{items.length ? items.map((item) => <article key={item.hypothesis_id}><span>{item.rank}</span><div><b>{human(item.driver_label)}</b><p>{item.statement}</p><small>{human(item.status)} · Evidence {item.supporting_evidence_ids.join(", ")}</small></div></article>) : <p className="quiet">No hypothesis cleared deterministic validation.</p>}<div className="validation-list">{validations.map((item) => <span key={item.validation_id} className={item.status === "PASS" ? "pass" : "muted"}>{human(item.kind)} · {item.status}</span>)}</div></section>; }

@@ -47,7 +47,9 @@ def _asx_holidays(year: int) -> set[date]:
         _observed(date(year, 1, 26)),
         easter - timedelta(days=2),
         easter + timedelta(days=1),
-        _observed(date(year, 4, 25)),
+        # ASX cash does not substitute a weekday closure when Anzac Day falls
+        # on a weekend. The calendar observes the actual 25 April only.
+        date(year, 4, 25),
         kings_birthday,
         *christmas_holidays,
     }

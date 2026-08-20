@@ -61,7 +61,7 @@ def test_mechanism_tests_only_classify_factual_assertions() -> None:
         session=resolve_session(date(2026, 8, 20)),
     )
 
-    tests = run_mechanism_tests(assertions, observed_at=datetime(2026, 8, 20, tzinfo=UTC))
+    tests = run_mechanism_tests(assertions, evaluated_at=datetime(2026, 8, 20, tzinfo=UTC))
 
     assert tests[0].mechanism == CausalMechanism.MECHANICAL
     assert tests[0].status == ValidationStatus.PASS

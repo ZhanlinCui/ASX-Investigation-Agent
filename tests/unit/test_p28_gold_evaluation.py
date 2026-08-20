@@ -65,6 +65,41 @@ def test_gold_manifest_rejects_future_evidence_and_wrong_session(tmp_path: Path)
     assert "future_evidence_ids" in result.errors[0]
 
 
+def test_legacy_holdout_loader_never_returns_label_bearing_manifest_data(
+    tmp_path: Path,
+) -> None:
+    sentinel = "DO_NOT_RETURN_SEALED_DRIVER_LABEL"
+    _write_manifest(
+        tmp_path,
+        [
+            _case(case_id=f"holdout-{index:02d}", driver_labels=[sentinel])
+            for index in range(12)
+        ],
+    )
+
+    result = load_gold_corpus("holdout", root=tmp_path)
+
+    assert result.status == "FAIL"
+    assert result.cases == []
+    assert "label-bearing holdout manifests" in result.errors[0]
+    assert sentinel not in result.model_dump_json()
+
+
+def test_legacy_development_loader_remains_available_for_adjudicated_cases(
+    tmp_path: Path,
+) -> None:
+    _write_manifest(
+        tmp_path,
+        [_case(case_id=f"development-{index:02d}") for index in range(24)],
+    )
+
+    result = load_gold_corpus("development", root=tmp_path)
+
+    assert result.status == "PASS"
+    assert len(result.cases) == 24
+    assert result.cases[0].driver_labels == ["ISSUER_DISCLOSURE"]
+
+
 def test_release_report_has_raw_counts_proportions_and_case_failures() -> None:
     evaluations = [
         CaseEvaluation(

@@ -53,7 +53,7 @@ The workbench can attach PDF, HTML or text sources up to 20 MB. URL ingestion is
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check src tests evals
 .venv/bin/python evals/run_recorded_evals.py
-.venv/bin/python evals/run_gold_evals.py --format markdown --estimated-case-cost-aud 0.01
+.venv/bin/python evals/run_gold_evals.py --format markdown
 cd web && pnpm test && pnpm build
 ```
 

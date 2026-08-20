@@ -37,6 +37,7 @@ from asx_investigator.evaluation.models import (
     GoldExecutionCase,
     GoldExecutionReport,
     GoldReleaseReport,
+    ModelUsageCostArtifact,
     ReleaseGateReport,
 )
 from asx_investigator.investigation.service import InvestigationService
@@ -59,6 +60,18 @@ def load_gold_corpus(corpus: str, *, root: Path | None = None) -> GoldCorpusLoad
             corpus=corpus,
             status="NOT_RUN",
             reason=f"{_ENVIRONMENT_ROOTS[corpus]} was not provided.",
+        )
+    if corpus == "holdout":
+        # This legacy loader materializes GoldCaseManifest, which contains
+        # adjudicated labels. Holdout execution must instead use the label-free
+        # frozen bundle loader and external grader path.
+        return GoldCorpusLoadResult(
+            corpus="holdout",
+            status="FAIL",
+            errors=[
+                "Legacy label-bearing holdout manifests are not loadable; use the "
+                "label-free sealed runtime and external grader."
+            ],
         )
     manifest_path = selected_root / "manifest.json"
     if not manifest_path.is_file():
@@ -186,7 +199,6 @@ async def execute_gold_corpus(
     corpus: FrozenGoldCorpus,
     *,
     reasoner: InvestigationReasoner | None = None,
-    estimated_cost_aud: float | None = None,
     allow_deterministic_fixture: bool = False,
 ) -> GoldExecutionReport:
     """Run frozen provider artifacts through the same kernel as the product.
@@ -205,14 +217,16 @@ async def execute_gold_corpus(
                 "deterministic fixture mode must be explicitly enabled."
             ),
         )
-    if reasoner is not None and (estimated_cost_aud is None or estimated_cost_aud <= 0):
+    if reasoner is not None and not callable(
+        getattr(reasoner, "consume_model_usage_cost_artifacts", None)
+    ):
         return GoldExecutionReport(
             corpus=corpus.kind,
             corpus_version=corpus.corpus_version,
             status="NOT_RUN",
             reason=(
-                "External agent release execution requires a known non-zero per-case "
-                "model cost in AUD."
+                "External agent release execution requires immutable recorded model usage "
+                "and AUD pricing artifacts tied to the deployed model configuration."
             ),
             model_configuration=dict(reasoner.model_configuration),
         )
@@ -222,8 +236,6 @@ async def execute_gold_corpus(
         if reasoner is not None
         else {"provider": "RECORDED_DETERMINISTIC_FIXTURE", "structured_calls_max": "0"}
     )
-    known_cost = 0.0 if reasoner is None else estimated_cost_aud
-    assert known_cost is not None
     cases: list[GoldExecutionCase] = []
     errors: list[str] = []
     for bundle in corpus.bundles:
@@ -232,13 +244,25 @@ async def execute_gold_corpus(
             first = await InvestigationService(
                 FrozenCaseGateway(bundle), reasoner=reasoner
             ).investigate(bundle.ticker, bundle.trade_date, mode="RECORDED")
+            first_cost = _consume_measured_case_cost(reasoner, model_configuration)
+            if first_cost is None:
+                return _cost_not_run(corpus, model_configuration)
             second = await InvestigationService(
                 FrozenCaseGateway(bundle), reasoner=reasoner
             ).investigate(bundle.ticker, bundle.trade_date, mode="RECORDED")
+            second_cost = _consume_measured_case_cost(reasoner, model_configuration)
+            if second_cost is None:
+                return _cost_not_run(corpus, model_configuration)
         except (FrozenBundleError, LookupError, ValueError) as error:
             errors.append(f"{bundle.case_id}: execution failed: {error}")
             continue
         latency_ms = round((perf_counter() - started) * 1_000)
+        measured_cost_aud = (
+            first_cost[0] + second_cost[0] if reasoner is not None else 0.0
+        )
+        cost_artifact_hashes = (
+            [*first_cost[1], *second_cost[1]] if reasoner is not None else []
+        )
         if corpus.kind == "holdout":
             # Keep sealed labels out of the execution object; an external grader
             # may later join this blind report with labels outside this runtime.
@@ -247,7 +271,8 @@ async def execute_gold_corpus(
                     case_id=bundle.case_id,
                     report=first,
                     latency_ms=latency_ms,
-                    estimated_cost_aud=known_cost,
+                    estimated_cost_aud=measured_cost_aud,
+                    cost_artifact_hashes=cost_artifact_hashes,
                 )
             )
             continue
@@ -256,7 +281,7 @@ async def execute_gold_corpus(
             _evaluation_manifest(manifest),
             first,
             latency_ms=latency_ms,
-            estimated_cost_aud=known_cost,
+            estimated_cost_aud=measured_cost_aud,
             ledger_reproducible=normalized_ledger(first) == normalized_ledger(second),
         )
         cases.append(
@@ -265,7 +290,8 @@ async def execute_gold_corpus(
                 report=first,
                 evaluation=evaluation,
                 latency_ms=latency_ms,
-                estimated_cost_aud=known_cost,
+                estimated_cost_aud=measured_cost_aud,
+                cost_artifact_hashes=cost_artifact_hashes,
             )
         )
     if errors:
@@ -301,7 +327,6 @@ async def run_external_gold(
     corpus: str,
     *,
     reasoner: InvestigationReasoner | None = None,
-    estimated_cost_aud: float | None = None,
 ) -> GoldExecutionReport:
     """Run a supplied external corpus, never treating an absent root as a pass."""
 
@@ -336,7 +361,46 @@ async def run_external_gold(
     return await execute_gold_corpus(
         frozen,
         reasoner=configured_reasoner,
-        estimated_cost_aud=estimated_cost_aud,
+    )
+
+
+def _consume_measured_case_cost(
+    reasoner: InvestigationReasoner | None,
+    model_configuration: dict[str, str],
+) -> tuple[float, list[str]] | None:
+    """Consume immutable post-call cost records; never trust a CLI estimate."""
+
+    if reasoner is None:
+        return 0.0, []
+    consume = getattr(reasoner, "consume_model_usage_cost_artifacts", None)
+    if not callable(consume):
+        return None
+    records = consume()
+    if not isinstance(records, list) or not records:
+        return None
+    try:
+        artifacts = [ModelUsageCostArtifact.model_validate(item) for item in records]
+    except ValueError:
+        return None
+    if any(artifact.model_configuration != model_configuration for artifact in artifacts):
+        return None
+    return sum(artifact.measured_cost_aud for artifact in artifacts), [
+        artifact.artifact_hash for artifact in artifacts
+    ]
+
+
+def _cost_not_run(
+    corpus: FrozenGoldCorpus, model_configuration: dict[str, str]
+) -> GoldExecutionReport:
+    return GoldExecutionReport(
+        corpus=corpus.kind,
+        corpus_version=corpus.corpus_version,
+        status="NOT_RUN",
+        reason=(
+            "External agent release execution did not produce immutable recorded model usage "
+            "and AUD pricing artifacts tied to the deployed model configuration."
+        ),
+        model_configuration=model_configuration,
     )
 
 
@@ -384,6 +448,8 @@ def _evaluation_manifest(manifest: GoldCaseManifest) -> EvalCaseManifest:
         coverage_expectation=manifest.coverage_expectation,
         abstention_policy=manifest.abstention_policy,
         expected_outcome=manifest.expected_outcome,
+        max_latency_ms=manifest.max_latency_ms,
+        max_cost_aud=manifest.max_cost_aud,
     )
 
 

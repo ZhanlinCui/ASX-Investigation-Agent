@@ -18,13 +18,23 @@ MECHANISM_POLICY_VERSION = "phase2-v1"
 def _mechanism_test(
     mechanism: CausalMechanism,
     assertions: list[EvidenceAssertion],
-    observed_at: datetime,
+    evaluated_at: datetime,
 ) -> MechanismTest:
-    supporting = [
-        item.assertion_id
+    supporting_assertions = [
+        item
         for item in assertions
         if item.causal_eligible and item.mechanism_hint == mechanism
     ]
+    supporting = [item.assertion_id for item in supporting_assertions]
+    available_at = max(
+        [
+            evaluated_at,
+            *[
+                max(assertion.published_at, assertion.retrieved_at)
+                for assertion in supporting_assertions
+            ],
+        ]
+    )
     return MechanismTest(
         test_id=f"MT-{mechanism.value.replace('_', '-')}",
         mechanism=mechanism,
@@ -37,17 +47,22 @@ def _mechanism_test(
         ),
         taxonomy_version=MECHANISM_TAXONOMY_VERSION,
         policy_version=MECHANISM_POLICY_VERSION,
-        created_at=observed_at,
+        created_at=available_at,
         supporting_assertion_ids=supporting,
     )
 
 
 def run_mechanism_tests(
-    assertions: list[EvidenceAssertion], *, observed_at: datetime
+    assertions: list[EvidenceAssertion], *, evaluated_at: datetime
 ) -> list[MechanismTest]:
-    """Record factual mechanism candidates without inferring one from market prices."""
+    """Record factual candidates at their deterministic evidence-availability time."""
 
-    tests = [_mechanism_test(CausalMechanism.MECHANICAL, assertions, observed_at)]
+    if evaluated_at.tzinfo is None:
+        raise ValueError("Mechanism evaluation timestamp must be timezone-aware")
+    # Each test uses the actual availability time of its own supporting
+    # assertions. This handles an in-session corporate-action feed without
+    # inventing a market-open timestamp or waiting on unrelated later evidence.
+    tests = [_mechanism_test(CausalMechanism.MECHANICAL, assertions, evaluated_at)]
     for mechanism in (
         CausalMechanism.ISSUER_EVENT,
         CausalMechanism.SECTOR_READTHROUGH,
@@ -56,7 +71,7 @@ def run_mechanism_tests(
         CausalMechanism.MARKET_STRUCTURE,
         CausalMechanism.UNKNOWN,
     ):
-        test = _mechanism_test(mechanism, assertions, observed_at)
+        test = _mechanism_test(mechanism, assertions, evaluated_at)
         if test.supporting_assertion_ids:
             tests.append(test)
     return tests

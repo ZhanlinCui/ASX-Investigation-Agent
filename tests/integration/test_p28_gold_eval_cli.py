@@ -18,7 +18,7 @@ def test_gold_eval_cli_reports_not_run_without_external_corpus() -> None:
     assert payload["holdout"]["status"] == "NOT_RUN"
 
 
-def test_gold_eval_cli_accepts_an_explicit_nonzero_aud_model_cost() -> None:
+def test_gold_eval_cli_rejects_a_caller_supplied_model_cost_estimate() -> None:
     root = Path(__file__).resolve().parents[2]
     completed = subprocess.run(
         [
@@ -31,9 +31,9 @@ def test_gold_eval_cli_accepts_an_explicit_nonzero_aud_model_cost() -> None:
         ],
         cwd=root,
         capture_output=True,
-        check=True,
+        check=False,
         text=True,
     )
 
-    payload = json.loads(completed.stdout)
-    assert payload["development"]["status"] == "NOT_RUN"
+    assert completed.returncode != 0
+    assert "unrecognized arguments: --estimated-case-cost-aud" in completed.stderr

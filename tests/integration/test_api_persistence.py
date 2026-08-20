@@ -91,6 +91,48 @@ def test_refinement_excludes_named_evidence_in_the_child_only(tmp_path: Path) ->
     assert child_report["coverage_status"] == "SCOPED_REFINEMENT"
 
 
+def test_scoped_version_report_keeps_parent_retrievable_after_refinement(tmp_path: Path) -> None:
+    app = create_app(
+        InvestigationService(RecordedToolGateway.default()),
+        repository=SQLiteCaseRepository(tmp_path / "cases.db"),
+    )
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/api/v1/investigations",
+            json={"ticker": "BHP", "trade_date": "2026-08-20", "mode": "RECORDED"},
+        ).json()
+        parent_current = wait_for_report(client, accepted["case_id"])
+        child = client.post(
+            f"/api/v1/investigations/{accepted['case_id']}/versions",
+            json={"excluded_evidence_ids": ["E1"]},
+        ).json()
+        child_current = wait_for_report(client, accepted["case_id"])
+        parent_version = client.get(
+            f"/api/v1/investigations/{accepted['case_id']}/versions/{accepted['version_id']}"
+        )
+        child_version = client.get(
+            f"/api/v1/investigations/{accepted['case_id']}/versions/{child['version_id']}"
+        )
+        unrelated = client.post(
+            "/api/v1/investigations",
+            json={"ticker": "BHP", "trade_date": "2026-08-20", "mode": "RECORDED"},
+        ).json()
+        mismatched = client.get(
+            f"/api/v1/investigations/{unrelated['case_id']}/versions/{accepted['version_id']}"
+        )
+
+    assert parent_current["run_id"] == accepted["version_id"]
+    assert child_current["run_id"] == child["version_id"]
+    assert parent_version.status_code == 200
+    assert child_version.status_code == 200
+    assert parent_version.json()["run_id"] == accepted["version_id"]
+    assert [item["evidence_id"] for item in parent_version.json()["evidence"]] == ["E1"]
+    assert child_version.json()["run_id"] == child["version_id"]
+    assert child_version.json()["evidence"] == []
+    assert "report_payload" not in parent_version.text
+    assert mismatched.status_code == 404
+
+
 def test_stage_checkpoints_are_persisted_with_monotonic_sequences(tmp_path: Path) -> None:
     repository = SQLiteCaseRepository(tmp_path / "cases.db")
     app = create_app(

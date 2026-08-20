@@ -527,7 +527,7 @@ class InvestigationKernel:
         assertions = list(packet.assertions)
         mechanism_tests = run_mechanism_tests(
             assertions,
-            observed_at=session.market_open,
+            evaluated_at=corporate_actions.retrieved_at,
         )
         causal = [item for item in evidence if item.role == EvidenceRole.CAUSAL_INPUT]
         selected = validated.leading if validated else None

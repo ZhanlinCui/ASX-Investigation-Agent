@@ -57,6 +57,23 @@ def test_older_evidence_is_context_not_an_automatic_current_session_cause() -> N
     assert timing.eligible_same_day_cause is False
 
 
+@pytest.mark.parametrize("weekend_year", (2021, 2026))
+def test_weekend_anzac_day_does_not_create_a_generic_observed_asx_closure(
+    weekend_year: int,
+) -> None:
+    observed_monday = date(weekend_year, 4, 26 if weekend_year == 2021 else 27)
+
+    session = resolve_session(observed_monday)
+
+    assert session.is_trading_day is True
+
+
+def test_weekday_anzac_day_remains_an_asx_cash_holiday() -> None:
+    session = resolve_session(date(2022, 4, 25))
+
+    assert session.is_trading_day is False
+
+
 def test_christmas_and_boxing_day_observance_do_not_collide_in_2027() -> None:
     boxing_observed = resolve_session(date(2027, 12, 28))
     last_session_before_christmas = resolve_session(date(2027, 12, 24))

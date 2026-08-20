@@ -688,6 +688,26 @@ def create_app(
             raise HTTPException(status_code=404, detail="Investigation not found") from error
         return {"items": [public_case_summary(record) for record in records]}
 
+    @app.get("/api/v1/investigations/{case_id}/versions/{version_id}")
+    async def get_version_report(case_id: str, version_id: str) -> dict[str, object]:
+        """Return one immutable version through the normal public projection."""
+
+        try:
+            record = await repository.get_version(version_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404, detail="Investigation version not found"
+            ) from error
+        if record.case_id != case_id:
+            # Do not disclose that a version ID belongs to another case.
+            raise HTTPException(status_code=404, detail="Investigation version not found")
+        if record.report_payload is None:
+            return public_case_summary(record)
+        try:
+            return public_report_payload(InvestigationReport.model_validate(record.report_payload))
+        except ValidationError:
+            return public_case_summary(record)
+
     @app.post(
         "/api/v1/investigations/{case_id}/versions",
         response_model=CaseAccepted,

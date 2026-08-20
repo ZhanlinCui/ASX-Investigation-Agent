@@ -6,10 +6,10 @@ Recorded on 21 August 2026 from the Phase 3 release worktree. This record distin
 
 | Check | Status | Result |
 |---|---|---|
-| `../../.venv/bin/python -m pytest -q` | PASS | 272 passed; 6 third-party deprecation warnings |
+| `../../.venv/bin/python -m pytest -q` | PASS | 284 passed; 6 third-party deprecation warnings |
 | `../../.venv/bin/ruff check src tests evals` | PASS | All checks passed |
 | `git diff --check` | PASS | No whitespace errors |
-| `cd web && pnpm test -- --run` | PASS | 5 tests passed |
+| `cd web && pnpm test -- --run` | PASS | 6 tests passed |
 | `cd web && pnpm build` | PASS | TypeScript and Vite production build passed |
 
 ## Local synthetic and recorded evaluation
@@ -24,13 +24,13 @@ These cases test orchestration and safety behavior. They are not historical attr
 
 | Check | Status | Result |
 |---|---|---|
-| `../../.venv/bin/python evals/run_gold_evals.py --format markdown --estimated-case-cost-aud 0.01` | NOT_RUN | `ASX_EVAL_DEVELOPMENT_ROOT` was not provided |
+| `../../.venv/bin/python evals/run_gold_evals.py --format markdown` | NOT_RUN | `ASX_EVAL_DEVELOPMENT_ROOT` was not provided |
 
 ## Sealed holdout
 
 | Check | Status | Result |
 |---|---|---|
-| `../../.venv/bin/python evals/run_gold_evals.py --format markdown --estimated-case-cost-aud 0.01` | NOT_RUN | `ASX_EVAL_HOLDOUT_ROOT` was not provided |
+| `../../.venv/bin/python evals/run_gold_evals.py --format markdown` | NOT_RUN | `ASX_EVAL_HOLDOUT_ROOT` was not provided |
 
 The sealed labels remain outside the repository and runtime. A blind report can be produced when the external bundle is supplied, but a release decision requires the external grader.
 

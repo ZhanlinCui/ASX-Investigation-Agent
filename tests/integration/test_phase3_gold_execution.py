@@ -20,7 +20,7 @@ from asx_investigator.evaluation.gold import (
     execute_gold_corpus,
     run_external_gold,
 )
-from asx_investigator.evaluation.models import GoldExecutionReport
+from asx_investigator.evaluation.models import GoldExecutionReport, ModelUsageCostArtifact
 from tests.unit.evaluation.test_bundles import _bind_metadata_artifact, write_bundle
 
 
@@ -63,6 +63,7 @@ def _write_development_manifest(
     *,
     artifact_ids: list[str],
     expected_outcome: str = "EXPLAINED",
+    max_cost_aud: float = 1.0,
 ) -> None:
     payload = {
         "schema_version": "gold-frozen-v1",
@@ -85,6 +86,7 @@ def _write_development_manifest(
                 "citation_requirements": ["E1"],
                 "abstention_policy": "FORBIDDEN",
                 "expected_outcome": expected_outcome,
+                "max_cost_aud": max_cost_aud,
             }
         ],
     }
@@ -151,6 +153,24 @@ class FrozenStructuredReasoner:
             summary="The supplied assertion is time eligible.",
         )
 
+    def consume_model_usage_cost_artifacts(self) -> list[ModelUsageCostArtifact]:
+        return [
+            ModelUsageCostArtifact.recorded(
+                model_configuration=self.model_configuration,
+                pricing_schedule_version="gemini-aud-test-v1",
+                input_tokens=100,
+                output_tokens=20,
+                measured_cost_aud=0.003,
+            ),
+            ModelUsageCostArtifact.recorded(
+                model_configuration=self.model_configuration,
+                pricing_schedule_version="gemini-aud-test-v1",
+                input_tokens=80,
+                output_tokens=15,
+                measured_cost_aud=0.003,
+            ),
+        ]
+
 
 class AlternatingProseReasoner(FrozenStructuredReasoner):
     """Emit different private model prose while retaining the same decision IDs."""
@@ -213,7 +233,7 @@ async def test_gold_execution_requires_a_configured_reasoner_unless_fixture_mode
     assert "configured structured reasoner" in result.reason
 
 
-async def test_gold_execution_records_configured_reasoner_latency_and_known_cost(
+async def test_gold_execution_records_configured_reasoner_latency_and_measured_cost(
     tmp_path: Path,
 ) -> None:
     artifacts = write_bundle(tmp_path / "gold-01")
@@ -224,7 +244,6 @@ async def test_gold_execution_records_configured_reasoner_latency_and_known_cost
     result = await execute_gold_corpus(
         corpus,
         reasoner=reasoner,
-        estimated_cost_aud=0.012,
     )
 
     assert result.status == "PASS"
@@ -233,6 +252,7 @@ async def test_gold_execution_records_configured_reasoner_latency_and_known_cost
     assert result.model_configuration == reasoner.model_configuration
     assert result.cases[0].latency_ms is not None
     assert result.cases[0].estimated_cost_aud == 0.012
+    assert len(result.cases[0].cost_artifact_hashes) == 4
 
 
 async def test_gold_reproducibility_ignores_private_model_prose_when_decisions_match(
@@ -245,7 +265,6 @@ async def test_gold_reproducibility_ignores_private_model_prose_when_decisions_m
     result = await execute_gold_corpus(
         corpus,
         reasoner=AlternatingProseReasoner(),
-        estimated_cost_aud=0.012,
     )
 
     assert result.status == "PASS"
@@ -257,7 +276,7 @@ async def test_gold_reproducibility_ignores_private_model_prose_when_decisions_m
     assert reproducibility.passed is True
 
 
-async def test_external_gold_runner_forwards_a_configured_reasoner_and_aud_cost(
+async def test_external_gold_runner_records_configured_reasoner_cost_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifacts = write_bundle(tmp_path / "gold-01")
@@ -271,16 +290,15 @@ async def test_external_gold_runner_forwards_a_configured_reasoner_and_aud_cost(
     )
     reasoner = FrozenStructuredReasoner()
 
-    result = await run_external_gold(
-        "development", reasoner=reasoner, estimated_cost_aud=0.01
-    )
+    result = await run_external_gold("development", reasoner=reasoner)
 
     assert result.status == "PASS"
     assert result.model_configuration == reasoner.model_configuration
-    assert result.cases[0].estimated_cost_aud == 0.01
+    assert result.cases[0].estimated_cost_aud == 0.012
+    assert result.cases[0].cost_artifact_hashes
 
 
-async def test_external_gold_runner_fails_closed_without_a_nonzero_model_cost(
+async def test_external_gold_runner_fails_closed_without_immutable_usage_cost_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifacts = write_bundle(tmp_path / "gold-01")
@@ -293,10 +311,34 @@ async def test_external_gold_runner_fails_closed_without_a_nonzero_model_cost(
         lambda *args, **kwargs: corpus,
     )
 
-    result = await run_external_gold("development", reasoner=FrozenStructuredReasoner())
+    class UnmeteredReasoner(FrozenStructuredReasoner):
+        consume_model_usage_cost_artifacts = None
+
+    result = await run_external_gold("development", reasoner=UnmeteredReasoner())
 
     assert result.status == "NOT_RUN"
-    assert "known non-zero per-case model cost" in (result.reason or "")
+    assert "immutable recorded model usage" in (result.reason or "")
+
+
+async def test_measured_usage_cost_cannot_be_replaced_by_a_tiny_caller_estimate(
+    tmp_path: Path,
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(
+        tmp_path,
+        artifact_ids=list(artifacts.values()),
+        max_cost_aud=0.01,
+    )
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+
+    result = await execute_gold_corpus(corpus, reasoner=FrozenStructuredReasoner())
+
+    assert result.status == "FAIL"
+    assert result.cases[0].estimated_cost_aud == 0.012
+    cost = next(
+        check for check in result.cases[0].evaluation.checks if check.name == "cost"
+    )
+    assert cost.passed is False
 
 
 async def test_missing_external_holdout_is_not_run(monkeypatch: pytest.MonkeyPatch) -> None:
