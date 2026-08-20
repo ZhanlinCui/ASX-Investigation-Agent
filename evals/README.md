@@ -49,3 +49,18 @@ model configuration. The runner never accepts a caller-supplied cost estimate:
 
 Without a configured model, an external corpus, or immutable measured cost
 artifacts, the affected external gate remains `NOT_RUN`.
+
+## EODHD provider smoke
+
+The isolated provider gate verifies one completed ASX session through the governed EODHD
+daily-bar primary and ASX corporate-actions adapters. It does not call Gemini or create a
+causal report:
+
+```bash
+.venv/bin/python evals/run_live_smoke.py --ticker BHP --trade-date 2026-08-20 --format markdown
+```
+
+Set `EODHD_API_KEY` only in the local ignored `.env` or process environment. The command
+returns `NOT_RUN` when that credential is absent; a configured provider failure returns
+`FAIL` with a safe provider outcome. Content-addressed response artifacts stay under the
+ignored `data/live-smoke/` directory, while output contains only safe metadata and hashes.

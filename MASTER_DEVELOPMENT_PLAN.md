@@ -1,11 +1,11 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 21 August 2026
-**Product stage:** Phase 3 implementation delivered in the recorded-only release candidate; external evaluation and Live release gates OPEN (`NOT_RUN`)
+**Product stage:** Phase 4 activation runtime implemented on the recorded-only release candidate; external evaluation and Live release gates OPEN (`NOT_RUN`)
 
-**Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
+**Recorded architecture record:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
+**Active activation plan:** `docs/phase-plans/phase-04-live-validation-activation.md`
 **Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
-**Next activation plan:** `docs/phase-plans/phase-04-live-validation-activation.md`
 
 ## Product contract
 
@@ -114,7 +114,12 @@ Deterministic graders own time, session, citation, numeric and provider-failure 
 
 ## Phase 4: Live Validation Activation
 
-Phase 4 has implemented its model-usage and measured-AUD-cost readiness boundary. External execution remains blocked until provider credentials, a real 24-case development corpus and a separately controlled 12-case holdout are provided. It exercises the Phase 3 architecture and makes a measured release decision; it does not expand product scope. See `docs/phase-plans/phase-04-live-validation-activation.md`.
+Phase 4 has implemented its model-usage and measured-AUD-cost readiness boundary and an
+EODHD-only credentialed provider-smoke runtime. The smoke validates one completed ASX
+session without a model call or causal report. Its credentialed execution, along with a
+real 24-case development corpus and separately controlled 12-case holdout, remains open.
+Phase 4 exercises the Phase 3 architecture and makes a measured release decision; it does
+not expand product scope. See `docs/phase-plans/phase-04-live-validation-activation.md`.
 
 ## Later phases
 

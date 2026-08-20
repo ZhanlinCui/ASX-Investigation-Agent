@@ -1,6 +1,6 @@
 # Phase 4: Live Validation Activation
 
-**Status:** Activation runtime partially implemented; external execution blocked by supplied inputs
+**Status:** Activation runtime implemented; external execution pending supplied inputs
 **Prerequisite implementation:** Phase 3 recorded-release candidate
 **Detailed runbook:** `docs/superpowers/plans/2026-08-21-phase-4-live-validation-activation.md`
 
@@ -20,9 +20,13 @@ Turn the recorded-release candidate into a measured release candidate by running
 | Milestone | Deliverable | Gate |
 |---|---|---|
 | P4.0 | Credential and corpus preflight | Implemented; all secrets remain outside the repository and invalid/missing inputs fail closed |
-| P4.1 | Credentialed provider smoke | Blocked pending approved provider credentials and controlled ASX fixture |
+| P4.1 | Credentialed provider smoke | Runtime implemented and tested; credentialed execution pending an EODHD key and completed ASX session |
 | P4.2 | Development evaluation | Runtime implemented; blocked pending 24 real point-in-time cases and external execution |
 | P4.3 | Sealed holdout and release decision | Independent grader reports the 12-case result and per-case failure analysis without exposing labels to runtime |
+
+### P4.1 implementation decision
+
+The credentialed provider smoke is a bounded EODHD-only command: it resolves one `.AU` equity, validates a completed ASX session, acquires the governed daily-bar primary outcome and obtains the ASX corporate-actions outcome. Provider response artifacts, coverage and safe errors are preserved; no model call or causal report is generated. The runtime is available through `evals/run_live_smoke.py`; its result remains `NOT_RUN` until a credential is actually configured. See `docs/superpowers/specs/2026-08-21-eodhd-live-smoke-design.md`.
 
 ## Non-negotiable gates
 
@@ -42,4 +46,4 @@ The configured Gemini reasoner now captures response token usage, derives AUD co
 
 ## Latest local verification
 
-At the Phase 4 readiness checkpoint: 292 Python tests passed, Ruff and Python compile checks passed, all 24 recorded policy sentinels passed, and the six-test frontend suite plus production build passed. Development gold, sealed holdout and credentialed Live smoke remain `NOT_RUN` because this checkout has none of their external inputs.
+At the Phase 4 EODHD-smoke checkpoint: 306 Python tests passed, Ruff and Python compile checks passed, all 24 recorded policy sentinels passed, and the six-test frontend suite plus production build passed. Development gold, sealed holdout and credentialed Live smoke remain `NOT_RUN` because this checkout has none of their external inputs.

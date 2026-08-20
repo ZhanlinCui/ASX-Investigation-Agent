@@ -6,7 +6,7 @@ The product does not recommend trades or predict prices.
 
 ## Current release
 
-Phase 2 and Phase 3 implementation are delivered in recorded mode. Phase 3 provides assertion-bound reasoning, deterministic mechanism tests, an append-only ledger, point-in-time shared-memory isolation, frozen gold execution, ordinal calibration gates, and audited JSON, Markdown and workbench decisions. Phase 4 has added hash-bound Gemini usage and AUD-cost readiness for external evaluation. The product is not release-approved: the external development gold corpus, sealed holdout and credentialed Live gates remain OPEN and `NOT_RUN`. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Fresh recorded-release results are in `evals/results/phase3-evaluation.md`.
+Phase 2 and Phase 3 implementation are delivered in recorded mode. Phase 3 provides assertion-bound reasoning, deterministic mechanism tests, an append-only ledger, point-in-time shared-memory isolation, frozen gold execution, ordinal calibration gates, and audited JSON, Markdown and workbench decisions. Phase 4 has added hash-bound Gemini usage and AUD-cost readiness for external evaluation, plus a bounded EODHD provider-smoke runtime. The product is not release-approved: the external development gold corpus, sealed holdout and credentialed Live gates remain OPEN and `NOT_RUN`. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Fresh recorded-release results are in `evals/results/phase3-evaluation.md`.
 
 Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
 
@@ -28,7 +28,7 @@ Required for Live model synthesis:
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`, default `gemini-3-flash-preview`
 
-Required before the Live gate can pass:
+Required before the full Live investigation gate can pass:
 
 - `EODHD_API_KEY`
 - `MARKETSTACK_API_KEY`
@@ -41,6 +41,9 @@ Required before an external gold run can report measured model cost:
 - `GEMINI_OUTPUT_AUD_PER_MILLION_TOKENS`
 
 Secrets are read by the backend only. They must not be committed or sent to the browser.
+
+The bounded EODHD provider smoke uses only `EODHD_API_KEY`; it does not invoke Gemini,
+discovery or a causal-investigation report.
 
 ## Run
 
@@ -64,6 +67,19 @@ cd web && pnpm test && pnpm build
 ```
 
 Use `evals/run_recorded_evals.py --write-results` only when intentionally refreshing the versioned evaluation artifacts.
+
+### EODHD provider smoke
+
+With a locally configured, ignored `.env`, run one **completed** ASX session:
+
+```bash
+.venv/bin/python evals/run_live_smoke.py --ticker BHP --trade-date 2026-08-20 --format markdown
+```
+
+The command writes raw provider snapshots only to ignored `data/live-smoke/` and emits a
+safe report with provider status, coverage and artifact hashes. Missing `EODHD_API_KEY`
+is `NOT_RUN`; credential, entitlement, rate-limit, schema or coverage failures are
+`FAIL`. It is not an investigation result and cannot approve a Live release by itself.
 
 ## Known limits
 

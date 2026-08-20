@@ -165,6 +165,43 @@ git add src/asx_investigator/evaluation/gold.py evals/run_gold_evals.py tests/in
 git commit -m "feat: require observed external evaluation cost"
 ```
 
+### Task 2a: Run a bounded EODHD provider smoke
+
+**Status:** Implementation delivered and locally verified; credentialed execution remains open.
+
+**Files:**
+- Create: `src/asx_investigator/evaluation/live_smoke.py`
+- Create: `evals/run_live_smoke.py`
+- Create: `tests/unit/evaluation/test_live_smoke.py`
+- Create: `tests/integration/test_live_smoke_cli.py`
+- Modify: `README.md`, `evals/README.md`, `MASTER_DEVELOPMENT_PLAN.md`, and `docs/phase-plans/phase-04-live-validation-activation.md`
+
+**Interfaces:**
+- Consumes: `EODHD_API_KEY`, one ticker and one completed ASX session.
+- Produces: a safe `PASS`, `FAIL` or `NOT_RUN` report; content-addressed raw provider snapshots stay in ignored local storage.
+
+- [x] **Step 1: Protect the runtime boundary**
+
+Missing credentials return `NOT_RUN`. Non-trading or unfinished sessions make no provider
+call. The command never accepts a token argument, makes no Gemini call and cannot produce
+a causal explanation.
+
+- [x] **Step 2: Reuse governed provider contracts**
+
+Require an `EODHD` primary `SUCCESS` outcome containing the target daily session and a
+frozen artifact. Require an `EODHD_ASX_CORPORATE_ACTIONS` `SUCCESS` or genuine `EMPTY`
+outcome with its own artifact. Any configured provider failure is a named `FAIL`, not a
+no-catalyst conclusion.
+
+- [x] **Step 3: Provide the opt-in command**
+
+```bash
+.venv/bin/python evals/run_live_smoke.py --ticker BHP --trade-date 2026-08-20 --format markdown
+```
+
+Use only a locally configured, ignored `EODHD_API_KEY`. A real output may be added to the
+release evidence after credentialed review; it must not contain secrets or raw responses.
+
 ### Task 3: Execute externally supplied validation without releasing labels
 
 **Files:**

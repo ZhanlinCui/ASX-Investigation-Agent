@@ -2,7 +2,7 @@
 ## Product Design Requirement
 
 **Version:** 2.5
-**Status:** Phase 3 recorded-release candidate with Phase 4 measured-cost readiness; external evaluation and Live release gates OPEN (`NOT_RUN`)
+**Status:** Phase 3 recorded-release candidate with Phase 4 measured-cost and EODHD-smoke readiness; external evaluation and Live release gates OPEN (`NOT_RUN`)
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -67,6 +67,7 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 
 - Gemini response token usage and a versioned AUD pricing schedule produce hash-bound, private evaluation-cost artifacts.
 - External evaluation refuses to call the model when pricing evidence is incomplete; a caller cannot substitute an estimate for observed cost.
+- The EODHD-only provider-smoke runtime validates a completed ASX session with governed price and corporate-actions outcomes, without a model call or a causal report.
 - Real development, sealed holdout and credentialed Live execution remain visibly `NOT_RUN` until their external inputs are supplied.
 
 ## Design direction
