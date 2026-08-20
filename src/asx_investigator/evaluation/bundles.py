@@ -40,7 +40,75 @@ _BUNDLE_VERSION = "frozen-case-v1"
 _CORPUS_VERSION = "gold-frozen-v1"
 _PROVIDER_SCHEMA_VERSION = "provider-outcome-v1"
 _POLICY_SCHEMA_VERSION = "phase3-gold-evaluation-v1"
-_HOLDOUT_CASE_FIELDS = {"case_id", "bundle_path"}
+_HOLDOUT_MANIFEST_FIELDS = {
+    "schema_version",
+    "corpus_version",
+    "corpus_policy_artifact_id",
+    "cases",
+}
+_HOLDOUT_CASE_FIELDS = {"case_id", "bundle_path", "metadata_artifact_id"}
+_HOLDOUT_CORPUS_POLICY_FIELDS = {
+    "schema_version",
+    "corpus_version",
+    "bundle_version",
+    "provider_schema_version",
+    "policy_schema_version",
+}
+_HOLDOUT_BUNDLE_OUTER_FIELDS = {
+    "metadata_artifact_id",
+    "bundle_version",
+    "case_id",
+    "ticker",
+    "trade_date",
+    "timezone",
+    "evidence_cutoff",
+    "provider_schema_version",
+    "policy_schema_version",
+    "instrument",
+    "market",
+    "corporate_actions",
+    "evidence",
+}
+_HOLDOUT_BUNDLE_FIELDS = _HOLDOUT_BUNDLE_OUTER_FIELDS - {"metadata_artifact_id"}
+_HOLDOUT_INSTRUMENT_FIELDS = {
+    "asx_code",
+    "company_name",
+    "exchange",
+    "currency",
+    "sector",
+}
+_HOLDOUT_MARKET_FIELDS = {
+    "artifact_id",
+    "selected_provider",
+    "benchmark_return",
+    "outcome",
+}
+_HOLDOUT_CORPORATE_ACTION_FIELDS = {"artifact_id", "outcome"}
+_HOLDOUT_OUTCOME_FIELDS = {
+    "status",
+    "provider",
+    "retrieved_at",
+    "coverage",
+    "provenance",
+    "error_code",
+    "source_version",
+}
+_HOLDOUT_PROVENANCE_FIELDS = {"artifact_id"}
+_HOLDOUT_EVIDENCE_FIELDS = {"coverage_complete", "documents"}
+_HOLDOUT_DOCUMENT_FIELDS = {"artifact_id", "mime_type", "metadata"}
+_HOLDOUT_EVIDENCE_METADATA_FIELDS = {
+    "evidence_id",
+    "source_name",
+    "source_url",
+    "published_at",
+    "retrieved_at",
+    "role",
+    "authority",
+    "title",
+    "content_hash",
+    "page",
+    "locator",
+}
 _HOLDOUT_FORBIDDEN_KEYS = {
     "report",
     "reports",
@@ -154,6 +222,148 @@ def _reject_holdout_labels_or_reports(value: object, *, label: str) -> None:
             _reject_holdout_labels_or_reports(item, label=f"{label}[{index}]")
 
 
+def _strict_mapping(
+    value: object,
+    *,
+    allowed_keys: set[str],
+    label: str,
+) -> Mapping[str, Any]:
+    """Reject undeclared sealed-holdout metadata before Pydantic can ignore it."""
+
+    mapping = _mapping(value, label)
+    unexpected = sorted(str(key) for key in mapping if key not in allowed_keys)
+    if unexpected:
+        raise FrozenBundleError(
+            f"sealed holdout field(s) not allowed at {label}: {', '.join(unexpected)}"
+        )
+    return mapping
+
+
+def _strict_optional_mapping(
+    parent: Mapping[str, Any],
+    key: str,
+    *,
+    allowed_keys: set[str],
+    label: str,
+) -> Mapping[str, Any] | None:
+    value = parent.get(key)
+    if value is None:
+        return None
+    return _strict_mapping(value, allowed_keys=allowed_keys, label=f"{label}.{key}")
+
+
+def _validate_holdout_outcome(value: object, *, label: str) -> None:
+    outcome = _strict_mapping(value, allowed_keys=_HOLDOUT_OUTCOME_FIELDS, label=label)
+    _strict_optional_mapping(
+        outcome,
+        "provenance",
+        allowed_keys=_HOLDOUT_PROVENANCE_FIELDS,
+        label=label,
+    )
+
+
+def _validate_holdout_bundle_declaration(
+    declaration: object,
+    *,
+    outer: bool,
+    label: str,
+) -> None:
+    """Apply the complete, label-free schema to sealed bundle metadata.
+
+    Pydantic domain models intentionally tolerate extra provider fields in Live
+    ingestion. A sealed fixture is different: every execution-changing JSON key
+    must be known before it can be exposed to the product path.
+    """
+
+    bundle = _strict_mapping(
+        declaration,
+        allowed_keys=_HOLDOUT_BUNDLE_OUTER_FIELDS if outer else _HOLDOUT_BUNDLE_FIELDS,
+        label=label,
+    )
+    _strict_optional_mapping(
+        bundle,
+        "instrument",
+        allowed_keys=_HOLDOUT_INSTRUMENT_FIELDS,
+        label=label,
+    )
+    market = _strict_optional_mapping(
+        bundle,
+        "market",
+        allowed_keys=_HOLDOUT_MARKET_FIELDS,
+        label=label,
+    )
+    if market is not None and "outcome" in market:
+        _validate_holdout_outcome(market["outcome"], label=f"{label}.market.outcome")
+    corporate_actions = _strict_optional_mapping(
+        bundle,
+        "corporate_actions",
+        allowed_keys=_HOLDOUT_CORPORATE_ACTION_FIELDS,
+        label=label,
+    )
+    if corporate_actions is not None and "outcome" in corporate_actions:
+        _validate_holdout_outcome(
+            corporate_actions["outcome"],
+            label=f"{label}.corporate_actions.outcome",
+        )
+    evidence = _strict_optional_mapping(
+        bundle,
+        "evidence",
+        allowed_keys=_HOLDOUT_EVIDENCE_FIELDS,
+        label=label,
+    )
+    if evidence is None:
+        return
+    documents = evidence.get("documents")
+    if not isinstance(documents, list):
+        return
+    for index, document in enumerate(documents):
+        document_label = f"{label}.evidence.documents[{index}]"
+        document_mapping = _strict_mapping(
+            document,
+            allowed_keys=_HOLDOUT_DOCUMENT_FIELDS,
+            label=document_label,
+        )
+        _strict_optional_mapping(
+            document_mapping,
+            "metadata",
+            allowed_keys=_HOLDOUT_EVIDENCE_METADATA_FIELDS,
+            label=document_label,
+        )
+
+
+def _validate_holdout_corpus_policy(
+    root: Path,
+    payload: Mapping[str, Any],
+    *,
+    corpus_version: str,
+) -> None:
+    """Bind the sealed corpus's schema and policy versions to immutable bytes."""
+
+    artifact_id = _string(
+        payload.get("corpus_policy_artifact_id"),
+        "corpus_policy_artifact_id",
+    )
+    policy = _strict_mapping(
+        _parse_json(
+            _read_verified_artifact_bytes(root, artifact_id),
+            "holdout corpus policy artifact",
+        ),
+        allowed_keys=_HOLDOUT_CORPUS_POLICY_FIELDS,
+        label="holdout corpus policy artifact",
+    )
+    expected = {
+        "schema_version": _CORPUS_VERSION,
+        "corpus_version": corpus_version,
+        "bundle_version": _BUNDLE_VERSION,
+        "provider_schema_version": _PROVIDER_SCHEMA_VERSION,
+        "policy_schema_version": _POLICY_SCHEMA_VERSION,
+    }
+    if dict(policy) != expected:
+        raise FrozenBundleError(
+            "holdout corpus policy artifact does not bind the supported policy and schema"
+        )
+
+
 def _bound_metadata(
     root: Path,
     outer: Mapping[str, Any],
@@ -164,6 +374,7 @@ def _bound_metadata(
 
     if sealed_holdout:
         _reject_holdout_labels_or_reports(outer, label="bundle")
+        _validate_holdout_bundle_declaration(outer, outer=True, label="bundle")
     artifact_id = _string(outer.get("metadata_artifact_id"), "metadata_artifact_id")
     metadata = _mapping(
         _parse_json(
@@ -174,6 +385,11 @@ def _bound_metadata(
     )
     if sealed_holdout:
         _reject_holdout_labels_or_reports(metadata, label="metadata artifact")
+        _validate_holdout_bundle_declaration(
+            metadata,
+            outer=False,
+            label="metadata artifact",
+        )
     declared = {key: value for key, value in outer.items() if key != "metadata_artifact_id"}
     if metadata != declared:
         raise FrozenBundleError(
@@ -597,9 +813,20 @@ def load_frozen_gold_corpus(
     payload = _mapping(_parse_json(manifest_path.read_bytes(), "gold manifest"), "gold manifest")
     if kind == "holdout":
         _reject_holdout_labels_or_reports(payload, label="holdout manifest")
+        _strict_mapping(
+            payload,
+            allowed_keys=_HOLDOUT_MANIFEST_FIELDS,
+            label="holdout manifest",
+        )
     if payload.get("schema_version") != _CORPUS_VERSION:
         raise FrozenBundleError(f"schema_version must be {_CORPUS_VERSION}")
     corpus_version = _string(payload.get("corpus_version"), "corpus_version")
+    if kind == "holdout":
+        _validate_holdout_corpus_policy(
+            root,
+            payload,
+            corpus_version=corpus_version,
+        )
     raw_cases = payload.get("cases")
     if not isinstance(raw_cases, list) or not raw_cases:
         raise FrozenBundleError("gold manifest must contain at least one case")
@@ -618,6 +845,20 @@ def load_frozen_gold_corpus(
             raise FrozenBundleError("gold manifest case IDs must be unique")
         case_ids.add(case_id)
         bundle_path = _string(case.get("bundle_path"), f"cases[{index}].bundle_path")
+        if kind == "holdout":
+            _strict_mapping(
+                case,
+                allowed_keys=_HOLDOUT_CASE_FIELDS,
+                label=f"holdout manifest cases[{index}]",
+            )
+            declared_metadata_artifact_id = _string(
+                case.get("metadata_artifact_id"),
+                f"cases[{index}].metadata_artifact_id",
+            )
+            if not _is_sha256(declared_metadata_artifact_id):
+                raise FrozenBundleError(
+                    "holdout manifest metadata_artifact_id must be a lowercase SHA-256 hash"
+                )
         relative = Path(bundle_path)
         if relative.is_absolute() or ".." in relative.parts:
             raise FrozenBundleError("bundle_path must stay within the gold root")
@@ -625,10 +866,9 @@ def load_frozen_gold_corpus(
         if bundle.case_id != case_id:
             raise FrozenBundleError("manifest case_id does not match its frozen bundle")
         if kind == "holdout":
-            unexpected = sorted(set(case) - _HOLDOUT_CASE_FIELDS)
-            if unexpected:
+            if declared_metadata_artifact_id != bundle.metadata_artifact_id:
                 raise FrozenBundleError(
-                    "holdout manifest must not contain sealed labels or case metadata"
+                    "holdout manifest metadata artifact does not match the frozen bundle"
                 )
         else:
             try:

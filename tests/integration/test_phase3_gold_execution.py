@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -13,7 +14,41 @@ from asx_investigator.evaluation.bundles import (
     load_frozen_gold_corpus,
 )
 from asx_investigator.evaluation.gold import execute_gold_corpus, run_external_gold
-from tests.unit.evaluation.test_bundles import write_bundle
+from tests.unit.evaluation.test_bundles import _bind_metadata_artifact, write_bundle
+
+
+def _write_holdout_manifest(
+    root: Path,
+    *,
+    metadata_artifact_id: str,
+) -> None:
+    """Write the label-free sealed-corpus declaration used by the product path."""
+
+    policy = {
+        "schema_version": "gold-frozen-v1",
+        "corpus_version": "sealed-test-v1",
+        "bundle_version": "frozen-case-v1",
+        "provider_schema_version": "provider-outcome-v1",
+        "policy_schema_version": "phase3-gold-evaluation-v1",
+    }
+    policy_bytes = json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()
+    policy_artifact_id = hashlib.sha256(policy_bytes).hexdigest()
+    artifacts = root / "artifacts"
+    artifacts.mkdir(exist_ok=True)
+    (artifacts / policy_artifact_id).write_bytes(policy_bytes)
+    payload = {
+        "schema_version": "gold-frozen-v1",
+        "corpus_version": "sealed-test-v1",
+        "corpus_policy_artifact_id": policy_artifact_id,
+        "cases": [
+            {
+                "case_id": "gold-01",
+                "bundle_path": "gold-01",
+                "metadata_artifact_id": metadata_artifact_id,
+            }
+        ],
+    }
+    (root / "manifest.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _write_development_manifest(
@@ -113,21 +148,98 @@ def test_blind_holdout_rejects_an_expected_outcome_label(tmp_path: Path) -> None
 
 
 def test_blind_holdout_rejects_a_nested_report_or_label_field(tmp_path: Path) -> None:
-    write_bundle(tmp_path / "gold-01")
+    artifacts = write_bundle(tmp_path / "gold-01")
     bundle_path = tmp_path / "gold-01" / "bundle.json"
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     bundle["evidence"]["documents"][0]["metadata"]["report"] = {
         "driver_labels": ["ISSUER_DISCLOSURE"]
     }
     bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
-    payload = {
-        "schema_version": "gold-frozen-v1",
-        "corpus_version": "sealed-test-v1",
-        "cases": [{"case_id": "gold-01", "bundle_path": "gold-01"}],
-    }
-    (tmp_path / "manifest.json").write_text(json.dumps(payload), encoding="utf-8")
+    _write_holdout_manifest(tmp_path, metadata_artifact_id=artifacts["metadata"])
 
     with pytest.raises(FrozenBundleError, match="report|sealed labels"):
+        load_frozen_gold_corpus(tmp_path, kind="holdout")
+
+
+@pytest.mark.parametrize("leaked_field", ("goldLabel", "expectedOutcome", "prebuiltReport"))
+def test_blind_holdout_rejects_camel_case_label_aliases(
+    tmp_path: Path,
+    leaked_field: str,
+) -> None:
+    root = tmp_path / "gold-01"
+    write_bundle(root)
+    bundle_path = root / "bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["evidence"]["documents"][0]["metadata"][leaked_field] = "EXPLAINED"
+    metadata_artifact_id = _bind_metadata_artifact(root, bundle)
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    _write_holdout_manifest(tmp_path, metadata_artifact_id=metadata_artifact_id)
+
+    with pytest.raises(FrozenBundleError, match="not allowed|sealed labels"):
+        load_frozen_gold_corpus(tmp_path, kind="holdout")
+
+
+def test_blind_holdout_rejects_arbitrary_unknown_metadata_fields(tmp_path: Path) -> None:
+    root = tmp_path / "gold-01"
+    write_bundle(root)
+    bundle_path = root / "bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["market"]["unknown_execution_hint"] = {"anything": "EXPLAINED"}
+    metadata_artifact_id = _bind_metadata_artifact(root, bundle)
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    _write_holdout_manifest(tmp_path, metadata_artifact_id=metadata_artifact_id)
+
+    with pytest.raises(FrozenBundleError, match="not allowed"):
+        load_frozen_gold_corpus(tmp_path, kind="holdout")
+
+
+def test_blind_holdout_manifest_rejects_replaced_bundle_metadata_at_same_path(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "gold-01"
+    artifacts = write_bundle(root)
+    _write_holdout_manifest(tmp_path, metadata_artifact_id=artifacts["metadata"])
+    bundle_path = root / "bundle.json"
+    replacement = json.loads(bundle_path.read_text(encoding="utf-8"))
+    replacement["market"]["benchmark_return"] = 2.0
+    _bind_metadata_artifact(root, replacement)
+    bundle_path.write_text(json.dumps(replacement), encoding="utf-8")
+
+    with pytest.raises(FrozenBundleError, match="metadata artifact"):
+        load_frozen_gold_corpus(tmp_path, kind="holdout")
+
+
+def test_blind_holdout_accepts_only_label_free_bound_provenance(tmp_path: Path) -> None:
+    root = tmp_path / "gold-01"
+    artifacts = write_bundle(root)
+    _write_holdout_manifest(tmp_path, metadata_artifact_id=artifacts["metadata"])
+
+    corpus = load_frozen_gold_corpus(tmp_path, kind="holdout")
+
+    assert corpus.manifests == {}
+    assert corpus.bundles[0].metadata_artifact_id == artifacts["metadata"]
+
+
+def test_blind_holdout_rejects_unbound_corpus_policy_schema(tmp_path: Path) -> None:
+    root = tmp_path / "gold-01"
+    artifacts = write_bundle(root)
+    _write_holdout_manifest(tmp_path, metadata_artifact_id=artifacts["metadata"])
+    manifest_path = tmp_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    policy = {
+        "schema_version": "gold-frozen-v1",
+        "corpus_version": "sealed-test-v1",
+        "bundle_version": "unreviewed-bundle-v2",
+        "provider_schema_version": "provider-outcome-v1",
+        "policy_schema_version": "phase3-gold-evaluation-v1",
+    }
+    policy_bytes = json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()
+    policy_artifact_id = hashlib.sha256(policy_bytes).hexdigest()
+    (tmp_path / "artifacts" / policy_artifact_id).write_bytes(policy_bytes)
+    manifest["corpus_policy_artifact_id"] = policy_artifact_id
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(FrozenBundleError, match="policy artifact"):
         load_frozen_gold_corpus(tmp_path, kind="holdout")
 
 
