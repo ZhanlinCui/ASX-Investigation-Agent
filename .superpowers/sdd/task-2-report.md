@@ -207,4 +207,4 @@ Added `test_zero_yield_provider_response_is_frozen_before_read_failure` beside t
 All checks passed!
 ```
 
-Follow-up fix commit: `c39c2fb` (`fix: preserve zero-byte provider response artifacts`).
+Follow-up fix commit: `daa305a` (`fix: preserve zero-byte provider response artifacts`).
