@@ -30,6 +30,7 @@ from asx_investigator.evaluation.grading import (
     normalized_ledger,
 )
 from asx_investigator.evaluation.models import (
+    AudPricingSchedule,
     CaseEvaluation,
     EvalCaseManifest,
     GoldCaseFailure,
@@ -237,17 +238,16 @@ async def execute_gold_corpus(
         if reasoner is not None
         else {"provider": "RECORDED_DETERMINISTIC_FIXTURE", "structured_calls_max": "0"}
     )
-    if reasoner is not None and not {
-        "pricing_schedule_version",
-        "pricing_schedule_hash",
-    } <= set(model_configuration):
+    if reasoner is not None and _validated_reasoner_pricing_schedule(
+        reasoner, model_configuration
+    ) is None:
         return GoldExecutionReport(
             corpus=corpus.kind,
             corpus_version=corpus.corpus_version,
             status="NOT_RUN",
             reason=(
-                "External agent release execution requires immutable recorded model usage "
-                "and AUD pricing artifacts tied to the deployed model configuration."
+                "External agent release execution requires a validated AUD pricing schedule "
+                "whose version and hash match the deployed model configuration."
             ),
             model_configuration=model_configuration,
         )
@@ -417,6 +417,29 @@ def _consume_measured_case_cost(
     return sum((artifact.measured_cost_aud for artifact in artifacts), Decimal("0")), [
         artifact.artifact_hash for artifact in artifacts
     ]
+
+
+def _validated_reasoner_pricing_schedule(
+    reasoner: InvestigationReasoner,
+    model_configuration: dict[str, str],
+) -> AudPricingSchedule | None:
+    """Validate price evidence before an external runner can invoke the model."""
+
+    candidate = getattr(reasoner, "pricing_schedule", None)
+    if not isinstance(candidate, AudPricingSchedule):
+        return None
+    try:
+        # ``model_copy`` can bypass Pydantic validation, so reparse the public
+        # snapshot rather than trusting a typed object supplied by a reasoner.
+        schedule = AudPricingSchedule.model_validate(candidate.model_dump(mode="json"))
+    except ValueError:
+        return None
+    if (
+        model_configuration.get("pricing_schedule_version") != schedule.version
+        or model_configuration.get("pricing_schedule_hash") != schedule.artifact_hash
+    ):
+        return None
+    return schedule
 
 
 def _cost_not_run(

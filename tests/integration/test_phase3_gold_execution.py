@@ -355,6 +355,27 @@ async def test_external_gold_execution_does_not_call_an_unpriced_reasoner(
     assert reasoner.challenge_calls == 0
 
 
+async def test_external_gold_execution_rejects_malformed_pricing_before_model_calls(
+    tmp_path: Path,
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+
+    class MalformedScheduleReasoner(FrozenStructuredReasoner):
+        pricing_schedule = FrozenStructuredReasoner.pricing_schedule.model_copy(
+            update={"artifact_hash": "0" * 64}
+        )
+
+    reasoner = MalformedScheduleReasoner()
+    result = await execute_gold_corpus(corpus, reasoner=reasoner)
+
+    assert result.status == "NOT_RUN"
+    assert "AUD pricing" in (result.reason or "")
+    assert reasoner.generate_calls == 0
+    assert reasoner.challenge_calls == 0
+
+
 async def test_measured_usage_cost_cannot_be_replaced_by_a_tiny_caller_estimate(
     tmp_path: Path,
 ) -> None:

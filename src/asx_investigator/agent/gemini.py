@@ -73,6 +73,12 @@ class GeminiInvestigationReasoner:
         artifacts, self._usage_cost_artifacts = self._usage_cost_artifacts, []
         return artifacts
 
+    @property
+    def pricing_schedule(self) -> AudPricingSchedule | None:
+        """Expose immutable price evidence for external-evaluation preflight."""
+
+        return self._pricing_schedule
+
     async def generate(self, packet: EvidencePacket) -> HypothesisBatch:
         if self.client is None:
             raise ReasoningUnavailable("GEMINI_API_KEY is not configured")
