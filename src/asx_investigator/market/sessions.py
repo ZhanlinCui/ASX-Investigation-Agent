@@ -85,7 +85,7 @@ def resolve_session(trade_date: date) -> TradingSession:
 
 def classify_event(published_at: datetime, session: TradingSession) -> EventTiming:
     local = published_at.astimezone(SYDNEY)
-    if not session.is_trading_day or local.date() != session.trade_date:
+    if not session.is_trading_day:
         return EventTiming(
             published_at=local,
             session_relationship="NON_TRADING_DAY",
@@ -93,9 +93,17 @@ def classify_event(published_at: datetime, session: TradingSession) -> EventTimi
             eligible_next_day_cause=True,
         )
     assert session.market_open is not None and session.market_close is not None
-    if local < session.market_open:
+    previous = resolve_session(session.previous_session)
+    assert previous.market_close is not None
+    if local.date() == session.trade_date and local < session.market_open:
         relationship = "PRE_OPEN"
         same_day, next_day = True, False
+    elif previous.market_close < local < session.market_open:
+        relationship = "PRIOR_TO_SESSION"
+        same_day, next_day = True, False
+    elif local < session.market_open:
+        relationship = "OLDER_CONTEXT"
+        same_day, next_day = False, False
     elif local <= session.market_close:
         relationship = "DURING_SESSION"
         same_day, next_day = True, False

@@ -81,9 +81,30 @@ class AfterCloseGateway(CountingGateway):
         ]
 
 
+class DuringSessionGateway(CountingGateway):
+    async def get_evidence(self, ticker, trade_date):
+        items = await self.delegate.get_evidence(ticker, trade_date)
+        return [
+            item.model_copy(update={"published_at": item.published_at.replace(hour=12)})
+            for item in items
+        ]
+
+
 class MissingMarketGateway(CountingGateway):
     async def get_market_data(self, ticker, trade_date):
         raise DataProviderUnavailable("outside trailing 12-month live window")
+
+
+class NonPrimaryEvidenceGateway(CountingGateway):
+    async def get_evidence(self, ticker, trade_date):
+        items = await self.delegate.get_evidence(ticker, trade_date)
+        return [items[0].model_copy(update={"authority": "USER_SUPPLIED"})]
+
+
+class DuplicateEvidenceGateway(CountingGateway):
+    async def get_evidence(self, ticker, trade_date):
+        items = await self.delegate.get_evidence(ticker, trade_date)
+        return [items[0], items[0].model_copy(update={"evidence_id": "E2"})]
 
 
 async def test_model_failure_preserves_market_facts_and_abstains() -> None:
@@ -125,6 +146,15 @@ async def test_after_close_evidence_cannot_support_same_day_causation() -> None:
     assert report.assessment.primary_claim_id is None
 
 
+async def test_during_session_evidence_requires_intraday_timing_resolution() -> None:
+    report = await InvestigationService(
+        DuringSessionGateway(), reasoner=GapReasoner()
+    ).investigate("BHP", "2026-08-20", mode="LIVE")
+
+    assert "TIMING_UNRESOLVED" in report.confidence.applied_caps
+    assert "INTRADAY_DATA_MISSING" in report.confidence.applied_caps
+
+
 async def test_unavailable_point_in_time_market_data_returns_incomplete_outcome() -> None:
     report = await InvestigationService(MissingMarketGateway()).investigate(
         "BHP", "2026-08-20", mode="LIVE"
@@ -134,3 +164,22 @@ async def test_unavailable_point_in_time_market_data_returns_incomplete_outcome(
     assert report.outcome == "INCOMPLETE_DATA"
     assert report.market_move is None
     assert report.coverage_gaps[0].capability == "market_data"
+
+
+async def test_non_primary_causal_evidence_cannot_claim_the_primary_source_factor() -> None:
+    report = await InvestigationService(
+        NonPrimaryEvidenceGateway(), reasoner=GapReasoner()
+    ).investigate("BHP", "2026-08-20", mode="LIVE")
+
+    assert "NO_PRIMARY_EVIDENCE" in report.confidence.applied_caps
+    assert "Temporally eligible primary evidence" not in report.confidence.positive_factors
+    assert report.claim_support[0].band == "MEDIUM"
+
+
+async def test_duplicate_content_is_removed_before_claim_ids_are_generated() -> None:
+    report = await InvestigationService(DuplicateEvidenceGateway()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+
+    assert [item.evidence_id for item in report.evidence] == ["E1"]
+    assert report.claims[0].supporting_evidence_ids == ["E1"]

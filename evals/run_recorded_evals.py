@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import os
@@ -225,7 +226,7 @@ def render_markdown(development: EvaluationReport, holdout: EvaluationReport) ->
     return "\n".join(lines) + "\n"
 
 
-async def main() -> None:
+async def main(*, write_results: bool = False) -> None:
     development = await run_development_suite()
     try:
         holdout_suite = load_holdout_suite()
@@ -237,17 +238,24 @@ async def main() -> None:
         "development": development.model_dump(mode="json"),
         "holdout": holdout.model_dump(mode="json"),
     }
-    RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
-    (RESULTS_ROOT / "phase2-evaluation.json").write_text(
-        json.dumps(payload, indent=2), encoding="utf-8"
-    )
-    (RESULTS_ROOT / "phase2-evaluation.md").write_text(
-        render_markdown(development, holdout), encoding="utf-8"
-    )
+    if write_results:
+        RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
+        (RESULTS_ROOT / "phase2-evaluation.json").write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+        (RESULTS_ROOT / "phase2-evaluation.md").write_text(
+            render_markdown(development, holdout), encoding="utf-8"
+        )
     print(json.dumps(payload, indent=2))
     if development.status != "PASSED" or holdout.status == "FAILED":
         raise SystemExit(1)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--write-results",
+        action="store_true",
+        help="replace the versioned JSON and Markdown evaluation artifacts",
+    )
+    asyncio.run(main(write_results=parser.parse_args().write_results))

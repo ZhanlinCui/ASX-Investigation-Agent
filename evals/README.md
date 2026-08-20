@@ -6,7 +6,7 @@ Run the deterministic suite from the repository root:
 .venv/bin/python evals/run_recorded_evals.py
 ```
 
-The command writes both JSON and Markdown results to `evals/results/`. It exits non-zero when an executed hard gate fails.
+The command prints a fresh report without modifying tracked files and exits non-zero when an executed hard gate fails. Pass `--write-results` only when intentionally refreshing the JSON and Markdown artifacts in `evals/results/`.
 
 ## Development suite
 

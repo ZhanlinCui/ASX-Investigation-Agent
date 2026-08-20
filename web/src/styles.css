@@ -40,6 +40,7 @@ input:focus, select:focus, .input-with-icon:focus-within { border-color: #016a71
 .case-hints { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; padding-top: 17px; color: #72706b; font-size: 12px; }
 .case-hints span { display: flex; align-items: center; gap: 6px; }
 .source-time { display: inline-flex; align-items: center; gap: 7px; }.source-time input { border: 1px solid #d1d1cd; border-radius: 4px; background: #fff; color: #2c2c2a; padding: 5px 7px; font: inherit; }
+.drawer-actions { display: flex; align-items: center; gap: 14px; margin-top: 18px; }.drawer-actions button { border: 0; background: transparent; color: #8a3b26; cursor: pointer; font: inherit; text-decoration: underline; }
 .upload-control { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: #016a71; }.upload-control input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .working-card, .error-card { display: flex; align-items: flex-start; gap: 13px; padding: 17px; margin-top: 18px; }
 .working-card p, .error-card p { margin: 4px 0 0; color: #72706b; font-size: 13px; }

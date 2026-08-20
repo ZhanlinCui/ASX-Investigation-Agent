@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from asx_investigator.agent.gemini import GeminiInvestigationReasoner
 from asx_investigator.domain.models import (
+    EvidenceItem,
+    EvidenceRole,
     InvestigationReport,
     InvestigationStatus,
     TraceReference,
@@ -43,6 +45,9 @@ class InvestigationRequest(BaseModel):
     trade_date: date
     mode: str = "LIVE"
     source_ids: list[str] = Field(default_factory=list)
+    primary_only: bool = False
+    excluded_evidence_ids: list[str] = Field(default_factory=list)
+    evidence_cutoff: datetime | None = None
 
     @field_validator("ticker")
     @classmethod
@@ -60,11 +65,19 @@ class InvestigationRequest(BaseModel):
             raise ValueError("mode must be LIVE or RECORDED")
         return value
 
+    @field_validator("evidence_cutoff")
+    @classmethod
+    def validate_cutoff(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("evidence_cutoff must include a timezone")
+        return value
+
 
 class RefinementRequest(BaseModel):
-    primary_only: bool = False
-    excluded_evidence_ids: list[str] = Field(default_factory=list)
+    primary_only: bool | None = None
+    excluded_evidence_ids: list[str] | None = None
     source_ids: list[str] | None = None
+    evidence_cutoff: datetime | None = None
 
 
 class CaseAccepted(BaseModel):
@@ -214,6 +227,34 @@ class CaseManager:
                 )
 
             supplied_evidence = await self.repository.get_source_evidence(request.source_ids)
+            for item in supplied_evidence:
+                await self.evidence_registry.register(record.version_id, item)
+            if supplied_evidence:
+                ranked: list[EvidenceItem] = []
+                seen: set[str] = set()
+                for query in (
+                    request.ticker,
+                    "guidance",
+                    "results",
+                    "production",
+                    "acquisition",
+                    "dividend",
+                    "earnings",
+                ):
+                    matches = await self.evidence_registry.search(
+                        record.version_id,
+                        query,
+                        limit=12,
+                        role=EvidenceRole.CAUSAL_INPUT,
+                        published_before=request.evidence_cutoff,
+                    )
+                    for match in matches:
+                        if match.evidence_id not in seen:
+                            ranked.append(match)
+                            seen.add(match.evidence_id)
+                    if len(ranked) >= 12:
+                        break
+                supplied_evidence = (ranked or supplied_evidence)[:12]
             active_service = (
                 self.recorded_service if request.mode == "RECORDED" else self.service
             )
@@ -223,6 +264,9 @@ class CaseManager:
                 mode=request.mode,
                 on_stage=persist_stage,
                 supplied_evidence=supplied_evidence,
+                primary_only=request.primary_only,
+                excluded_evidence_ids=request.excluded_evidence_ids,
+                evidence_cutoff=request.evidence_cutoff,
             )
             report.case_id = record.case_id
             report.run_id = record.version_id
@@ -236,7 +280,10 @@ class CaseManager:
                     **diagnostic.model_dump(),
                 )
             for item in report.evidence:
-                await self.evidence_registry.register(record.version_id, item)
+                if not await self.evidence_registry.register(record.version_id, item):
+                    raise ValueError(
+                        "Evidence content was not uniquely identified after deduplication"
+                    )
             await self.repository.update_status(
                 record.version_id, "RUNNING", active_stage="persist_and_publish"
             )
@@ -259,6 +306,16 @@ class CaseManager:
                 "publish",
                 completed.status,
                 {"outcome": completed.outcome or "INSUFFICIENT_EVIDENCE"},
+            )
+        except (KeyError, LookupError, ValueError):
+            await self.repository.update_status(
+                record.version_id,
+                "FAILED",
+                active_stage=stage,
+                error="The case input or referenced source is invalid and cannot be retried.",
+            )
+            await self.repository.append_event(
+                record.version_id, "failed", stage, "FAILED"
             )
         except Exception:
             await self.repository.update_status(
@@ -523,11 +580,17 @@ def create_app(
         )
 
     @app.get("/api/v1/evidence/{evidence_id}/content")
-    async def evidence_content(evidence_id: str) -> dict[str, object]:
+    async def evidence_content(
+        evidence_id: str, version_id: str | None = None
+    ) -> dict[str, object]:
         try:
-            return await repository.find_evidence_content(evidence_id)
+            return await repository.find_evidence_content(
+                evidence_id, version_id=version_id
+            )
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Evidence not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     return app
 

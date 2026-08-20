@@ -47,81 +47,21 @@
             "hard_gate": true
           },
           {
-            "name": "abstention",
+            "name": "session_integrity",
             "passed": true,
-            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
             "hard_gate": true
           },
           {
-            "name": "coverage",
+            "name": "numeric_integrity",
             "passed": true,
-            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "detail": "finite_values=True; values_checked=7",
             "hard_gate": true
           },
           {
-            "name": "provider_failure_semantics",
+            "name": "mechanical_flags",
             "passed": true,
-            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
-            "hard_gate": true
-          },
-          {
-            "name": "confidence_semantics",
-            "passed": true,
-            "detail": "band=HIGH",
-            "hard_gate": true
-          },
-          {
-            "name": "latency",
-            "passed": true,
-            "detail": "observed_ms=2; max_ms=30000",
-            "hard_gate": true
-          },
-          {
-            "name": "cost",
-            "passed": true,
-            "detail": "observed_aud=0.000000; max_aud=1.000000",
-            "hard_gate": true
-          }
-        ],
-        "raw_counts": {
-          "passed": 11,
-          "failed": 0
-        },
-        "latency_ms": 2,
-        "estimated_cost_aud": 0.0
-      },
-      {
-        "case_id": "dev-02-disclosure",
-        "passed": true,
-        "checks": [
-          {
-            "name": "expected_outcome",
-            "passed": true,
-            "detail": "observed=EXPLAINED; expected=EXPLAINED",
-            "hard_gate": true
-          },
-          {
-            "name": "top_1_attribution",
-            "passed": true,
-            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
-            "hard_gate": true
-          },
-          {
-            "name": "top_2_attribution",
-            "passed": true,
-            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
-            "hard_gate": true
-          },
-          {
-            "name": "grounding",
-            "passed": true,
-            "detail": "material_claims=1; cited_ids=['E1']",
-            "hard_gate": true
-          },
-          {
-            "name": "temporal_integrity",
-            "passed": true,
-            "detail": "blacklisted_citations=[]",
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
             "hard_gate": true
           },
           {
@@ -162,7 +102,103 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-02-disclosure",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -203,6 +239,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -240,7 +294,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -281,6 +335,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=['CHECKED_NO_EVENT']; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -318,7 +390,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -359,6 +431,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=['CHECKED_NO_EVENT']; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -396,7 +486,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -437,6 +527,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=['CHECKED_NO_EVENT']; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -474,7 +582,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -515,6 +623,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -552,7 +678,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -593,6 +719,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -630,7 +774,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -671,6 +815,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -708,7 +870,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -749,6 +911,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -786,7 +966,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -827,6 +1007,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -864,7 +1062,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -905,6 +1103,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -942,7 +1158,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -983,6 +1199,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -1020,7 +1254,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1061,6 +1295,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -1098,7 +1350,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1139,6 +1391,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -1176,7 +1446,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1217,6 +1487,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -1254,7 +1542,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1295,6 +1583,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -1332,7 +1638,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1373,6 +1679,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
@@ -1410,7 +1734,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1451,6 +1775,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
@@ -1488,7 +1830,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1529,6 +1871,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
@@ -1566,7 +1926,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1607,6 +1967,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
@@ -1644,7 +2022,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1685,6 +2063,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=REQUIRED; outcome=NO_IDENTIFIABLE_CATALYST",
@@ -1722,7 +2118,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1763,6 +2159,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=REQUIRED; outcome=NO_IDENTIFIABLE_CATALYST",
@@ -1800,7 +2214,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,
@@ -1841,6 +2255,24 @@
             "hard_gate": true
           },
           {
+            "name": "session_integrity",
+            "passed": true,
+            "detail": "trade_date=2026-08-20; timezone=AEST; expected_timezone=AEST",
+            "hard_gate": true
+          },
+          {
+            "name": "numeric_integrity",
+            "passed": true,
+            "detail": "finite_values=True; values_checked=7",
+            "hard_gate": true
+          },
+          {
+            "name": "mechanical_flags",
+            "passed": true,
+            "detail": "expected=[]; validation=validation_id='V-MECHANICAL' kind='CORPORATE_ACTION_CHECK' status=<ValidationStatus.PASS: 'PASS'> summary='The authoritative feed returned 0 corporate actions for the session; price fields were not used to invent missing events.' evidence_ids=[]",
+            "hard_gate": true
+          },
+          {
             "name": "abstention",
             "passed": true,
             "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
@@ -1878,7 +2310,7 @@
           }
         ],
         "raw_counts": {
-          "passed": 11,
+          "passed": 14,
           "failed": 0
         },
         "latency_ms": 1,

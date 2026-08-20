@@ -66,6 +66,31 @@ def test_refinement_creates_child_version_without_mutating_parent(tmp_path: Path
     assert parent["case_version"] == 1
 
 
+def test_refinement_excludes_named_evidence_in_the_child_only(tmp_path: Path) -> None:
+    app = create_app(
+        InvestigationService(RecordedToolGateway.default()),
+        repository=SQLiteCaseRepository(tmp_path / "cases.db"),
+    )
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/api/v1/investigations",
+            json={"ticker": "BHP", "trade_date": "2026-08-20", "mode": "RECORDED"},
+        ).json()
+        parent = wait_for_report(client, accepted["case_id"])
+        child = client.post(
+            f"/api/v1/investigations/{accepted['case_id']}/versions",
+            json={"excluded_evidence_ids": ["E1"]},
+        ).json()
+        child_report = wait_for_report(client, accepted["case_id"])
+
+    assert child["parent_version_id"] == accepted["version_id"]
+    assert parent["outcome"] == "EXPLAINED"
+    assert [item["evidence_id"] for item in parent["evidence"]] == ["E1"]
+    assert child_report["outcome"] == "INSUFFICIENT_EVIDENCE"
+    assert child_report["evidence"] == []
+    assert child_report["coverage_status"] == "SCOPED_REFINEMENT"
+
+
 def test_stage_checkpoints_are_persisted_with_monotonic_sequences(tmp_path: Path) -> None:
     repository = SQLiteCaseRepository(tmp_path / "cases.db")
     app = create_app(

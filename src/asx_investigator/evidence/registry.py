@@ -44,14 +44,14 @@ class SQLiteEvidenceRegistry:
             await connection.execute("BEGIN IMMEDIATE")
             duplicate = await (
                 await connection.execute(
-                    """SELECT 1 FROM evidence_records
+                    """SELECT evidence_id FROM evidence_records
                     WHERE version_id = ? AND content_hash = ? LIMIT 1""",
                     (version_id, evidence.content_hash),
                 )
             ).fetchone()
             if duplicate:
                 await connection.rollback()
-                return False
+                return str(duplicate[0]) == evidence.evidence_id
             await connection.execute(
                 """INSERT INTO evidence_records
                 (evidence_id, version_id, artifact_id, content_hash, origin_hash,

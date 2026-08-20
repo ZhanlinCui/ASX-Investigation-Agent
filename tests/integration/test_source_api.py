@@ -44,7 +44,8 @@ def test_uploaded_text_is_frozen_added_to_case_and_opened_as_exact_passage() -> 
             item for item in payload["evidence"] if item["title"] == source["title"]
         )
         passage = client.get(
-            f"/api/v1/evidence/{uploaded_evidence['evidence_id']}/content"
+            f"/api/v1/evidence/{uploaded_evidence['evidence_id']}/content",
+            params={"version_id": accepted["version_id"]},
         )
 
     assert passage.status_code == 200
@@ -99,3 +100,28 @@ def test_refinement_inherits_attached_sources_unless_explicitly_replaced() -> No
 
     assert refined.status_code == 202
     assert versions[-1]["request_payload"]["source_ids"] == [source["source_id"]]
+
+
+def test_unknown_source_is_a_permanent_case_failure() -> None:
+    app = create_app(InvestigationService(RecordedToolGateway.default()))
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/api/v1/investigations",
+            json={
+                "ticker": "BHP",
+                "trade_date": "2026-08-20",
+                "mode": "RECORDED",
+                "source_ids": ["missing-source"],
+            },
+        ).json()
+        payload: dict[str, object] = {}
+        for _ in range(40):
+            payload = client.get(
+                f"/api/v1/investigations/{accepted['case_id']}"
+            ).json()
+            if payload["status"] not in {"QUEUED", "RUNNING"}:
+                break
+            sleep(0.01)
+
+    assert payload["status"] == "FAILED"
+    assert payload["active_stage"] == "resolve_instrument"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Protocol
 
 from pydantic import BaseModel, Field, model_validator
@@ -77,6 +78,27 @@ class InvestigationReasoner(Protocol):
     ) -> ChallengeResult: ...
 
 
+_NON_EVIDENTIAL_WORDS = {
+    "caused",
+    "company",
+    "drove",
+    "leading",
+    "market",
+    "move",
+    "price",
+    "share",
+    "stock",
+}
+
+
+def _meaningful_tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if len(token) >= 4 and token not in _NON_EVIDENTIAL_WORDS
+    }
+
+
 def validate_reasoning(
     batch: HypothesisBatch,
     challenge: ChallengeResult,
@@ -108,6 +130,18 @@ def validate_reasoning(
     ):
         raise ReasoningValidationError(
             "Selected hypothesis has no temporally eligible causal evidence"
+        )
+    supporting_text = " ".join(
+        f"{item.title} {item.passage}"
+        for item in packet.snippets
+        if item.evidence_id in selected.supporting_evidence_ids
+    )
+    statement_tokens = _meaningful_tokens(selected.statement)
+    overlap = statement_tokens & _meaningful_tokens(supporting_text)
+    required_overlap = 1 if len(statement_tokens) <= 1 else 2
+    if len(overlap) < required_overlap:
+        raise ReasoningValidationError(
+            "Selected hypothesis is not textually supported by its cited passages"
         )
 
     hypotheses: list[Hypothesis] = []

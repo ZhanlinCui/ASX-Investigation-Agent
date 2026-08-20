@@ -35,3 +35,21 @@ def test_post_close_event_is_only_eligible_for_next_session() -> None:
     assert timing.session_relationship == "POST_CLOSE"
     assert timing.eligible_same_day_cause is False
     assert timing.eligible_next_day_cause is True
+
+
+def test_prior_session_post_close_is_eligible_for_the_next_open() -> None:
+    next_session = resolve_session(date(2026, 8, 21))
+    timing = classify_event(
+        datetime.fromisoformat("2026-08-20T16:10:00+10:00"), next_session
+    )
+
+    assert timing.session_relationship == "PRIOR_TO_SESSION"
+    assert timing.eligible_same_day_cause is True
+
+
+def test_older_evidence_is_context_not_an_automatic_current_session_cause() -> None:
+    session = resolve_session(date(2026, 8, 21))
+    timing = classify_event(datetime.fromisoformat("2026-08-19T12:00:00+10:00"), session)
+
+    assert timing.session_relationship == "OLDER_CONTEXT"
+    assert timing.eligible_same_day_cause is False

@@ -74,7 +74,7 @@ export default function App() {
   useEffect(() => { void refreshArchive(); }, []);
 
   useEffect(() => {
-    if (!caseId || terminalStatuses.includes(status)) return;
+    if (!caseId) return;
     const stream = new EventSource(`${apiBase}/api/v1/investigations/${caseId}/events`);
     stream.addEventListener("status", (event) => setStatus(JSON.parse(event.data).status as Status));
     stream.addEventListener("stage", (event) => {
@@ -84,7 +84,7 @@ export default function App() {
     stream.addEventListener("completed", () => stream.close());
     stream.addEventListener("failed", () => stream.close());
     return () => stream.close();
-  }, [caseId, status]);
+  }, [caseId]);
 
   useEffect(() => {
     if (!caseId || !["QUEUED", "RUNNING"].includes(status)) return;
@@ -111,8 +111,9 @@ export default function App() {
   async function openCase(item: ArchiveItem) {
     const response = await fetch(`${apiBase}/api/v1/investigations/${item.case_id}`);
     if (!response.ok) return;
-    const payload = (await response.json()) as Report;
-    setCaseId(item.case_id); setStatus(payload.status); setReport(payload); setError(null); setStages([]);
+    const payload = (await response.json()) as Report & { error?: string };
+    setCaseId(item.case_id); setStatus(payload.status); setError(payload.error ?? null); setStages([]);
+    setReport(payload.status === "COMPLETED" ? payload : null);
   }
 
   async function uploadSource(file?: File) {
@@ -166,13 +167,13 @@ function ReportView({ report, onRefined }: { report: Report; onRefined: (caseId:
   const [versions, setVersions] = useState<ArchiveItem[]>([]);
   const primary = report.claims.find((claim) => claim.claim_id === report.assessment.primary_claim_id);
   useEffect(() => { void fetch(`${apiBase}/api/v1/investigations/${report.case_id}/versions`).then((response) => response.json()).then((payload: { items: ArchiveItem[] }) => setVersions(payload.items)); }, [report.case_id]);
-  async function inspect(item: Evidence) { setSelected(item); setPassage(null); const response = await fetch(`${apiBase}/api/v1/evidence/${encodeURIComponent(item.evidence_id)}/content`); setPassage(response.ok ? await response.json() : { passage: item.passage, locator: item.locator, page: item.page }); }
-  async function refine() { const response = await fetch(`${apiBase}/api/v1/investigations/${report.case_id}/versions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ primary_only: true, excluded_evidence_ids: [] }) }); if (response.ok) onRefined(((await response.json()) as { case_id: string }).case_id); }
+  async function inspect(item: Evidence) { setSelected(item); setPassage(null); const response = await fetch(`${apiBase}/api/v1/evidence/${encodeURIComponent(item.evidence_id)}/content?version_id=${encodeURIComponent(report.run_id)}`); setPassage(response.ok ? await response.json() : { passage: item.passage, locator: item.locator, page: item.page }); }
+  async function refine(options: { primary_only?: boolean; excluded_evidence_ids?: string[] }) { const response = await fetch(`${apiBase}/api/v1/investigations/${report.case_id}/versions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(options) }); if (response.ok) onRefined(((await response.json()) as { case_id: string }).case_id); }
   const parent = versions.find((item) => item.version_id === report.parent_version_id)?.report_payload;
   return <div className="report-stack">
     <section className="report-head"><div><p className="eyebrow">CASE RESULT · VERSION {report.case_version}</p><h2>{report.instrument.company_name} <span>({report.ticker})</span></h2><p>{report.trade_date} · {report.timezone_label} · {report.instrument.sector ?? "ASX-listed equity"}</p><div className="outcome-line"><span>{human(report.outcome)}</span><span>{human(report.status)}</span></div></div><div className={`confidence ${confidenceTone(report.confidence.band)}`}><span>Selected hypothesis</span><strong>{report.confidence.band}</strong><small>{report.confidence.calibration_status} · {report.confidence.rule_version}</small></div></section>
-    <div className="report-actions"><a href={`${apiBase}/api/v1/investigations/${report.case_id}?format=markdown`}><DownloadSimple size={15} /> Export Markdown</a><button onClick={() => void refine()}><FileText size={15} /> Refine as child version</button></div>
-    {parent && <section className="comparison-bar"><b>Compared with v{parent.case_version}</b><span>{human(parent.outcome)} → {human(report.outcome)}</span><span>{parent.confidence.band} → {report.confidence.band}</span></section>}
+    <div className="report-actions"><a href={`${apiBase}/api/v1/investigations/${report.case_id}?format=markdown`}><DownloadSimple size={15} /> Export Markdown</a><button onClick={() => void refine({ primary_only: true })}><FileText size={15} /> Primary-sources-only child</button></div>
+    {parent && <section className="comparison-bar"><b>Compared with v{parent.case_version}</b><span>{human(parent.outcome)} → {human(report.outcome)}</span><span>{parent.confidence.band} → {report.confidence.band}</span><span>{parent.evidence.length} → {report.evidence.length} evidence items</span></section>}
     <section className="metric-grid"><Metric label="Close-to-close" value={percent(report.market_move?.close_return_pct)} emphasis /><Metric label="Opening gap" value={percent(report.market_move?.open_gap_pct)} /><Metric label="Open to close" value={percent(report.market_move?.open_to_close_pct)} /><Metric label="Turnover" value={aud(report.market_move?.turnover_aud)} /><Metric label="Market relative" value={percent(report.market_move?.market_relative_return_pct)} /></section>
     <section className="assessment-card"><div className="section-kicker"><ChartLineUp size={18} /> Leading assessment</div><h3>{report.assessment.summary}</h3><div className="assessment-footer"><span className="chip">{primary?.claim_type ?? "UNRESOLVED"}</span><span>Coverage: {human(report.coverage_status)}</span><span>Completeness: {human(report.completeness.status)}</span>{report.confidence.applied_caps.map((cap) => <span className="caution" key={cap}>{human(cap)}</span>)}</div></section>
     <section className="analysis-grid"><Hypotheses items={report.hypotheses} validations={report.validation_results} /><ConfidencePanel report={report} /></section>
@@ -180,7 +181,7 @@ function ReportView({ report, onRefined }: { report: Report; onRefined: (caseId:
     <section className="evidence-card"><div className="section-title"><div><h3>Evidence register</h3><p>Open an item to inspect the exact stored passage and locator.</p></div><span>{report.evidence.length} item{report.evidence.length === 1 ? "" : "s"}</span></div>{report.evidence.length ? <div className="evidence-list">{report.evidence.map((item) => <button className="evidence-item" key={item.evidence_id} onClick={() => void inspect(item)}><span className="evidence-number">{item.evidence_id.split(":").at(-1)}</span><span><span className="evidence-meta"><em>{human(item.authority)}</em><em>{new Date(item.published_at).toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" })}</em><em>{human(item.role)}</em></span><b>{item.title}</b><p>{item.passage}</p><small>{item.locator ?? "Locator unavailable"}</small></span></button>)}</div> : <p className="no-evidence">No time-eligible evidence was registered.</p>}</section>
     <details className="trace-card"><summary>Investigation trace and configuration</summary><div><p>Source policy {report.source_policy_version} · Model {report.model_configuration.model ?? report.model_configuration.provider ?? "deterministic"}</p>{report.trace.map((item, index) => <span key={`${item.node}-${index}`}>{human(item.node)} <b>{item.status}</b></span>)}</div></details>
     <section id="method" className="method-note"><CheckCircle size={18} /><p>Confidence is a rule-governed evidence-strength band, not a probability. Completeness and claim support are assessed separately.</p></section>
-    {selected && <div className="passage-backdrop" role="presentation" onClick={() => setSelected(null)}><aside className="passage-drawer" role="dialog" aria-modal="true" aria-label="Evidence passage" onClick={(event) => event.stopPropagation()}><button className="drawer-close" onClick={() => setSelected(null)} aria-label="Close passage"><X size={18} /></button><span className="chip">{selected.evidence_id}</span><h3>{selected.title}</h3><p className="drawer-meta">{human(selected.authority)} · {passage?.locator ?? selected.locator ?? "No locator"}</p><blockquote>{passage?.passage ?? "Loading exact passage…"}</blockquote>{selected.source_url.startsWith("http") && <a href={selected.source_url} target="_blank" rel="noreferrer">Open original source</a>}</aside></div>}
+    {selected && <div className="passage-backdrop" role="presentation" onClick={() => setSelected(null)}><aside className="passage-drawer" role="dialog" aria-modal="true" aria-label="Evidence passage" onClick={(event) => event.stopPropagation()}><button className="drawer-close" onClick={() => setSelected(null)} aria-label="Close passage"><X size={18} /></button><span className="chip">{selected.evidence_id}</span><h3>{selected.title}</h3><p className="drawer-meta">{human(selected.authority)} · {passage?.locator ?? selected.locator ?? "No locator"}</p><blockquote>{passage?.passage ?? "Loading exact passage…"}</blockquote><div className="drawer-actions">{selected.source_url.startsWith("http") && <a href={selected.source_url} target="_blank" rel="noreferrer">Open original source</a>}<button onClick={() => void refine({ excluded_evidence_ids: [selected.evidence_id] })}>Exclude in child version</button></div></aside></div>}
   </div>;
 }
 

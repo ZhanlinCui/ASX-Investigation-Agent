@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import date
+from datetime import date, datetime
 from uuid import uuid4
 
 from asx_investigator.agent.reasoning import (
@@ -66,6 +66,9 @@ class InvestigationService:
         mode: str = "LIVE",
         on_stage: StageObserver | None = None,
         supplied_evidence: list[EvidenceItem] | None = None,
+        primary_only: bool = False,
+        excluded_evidence_ids: list[str] | None = None,
+        evidence_cutoff: datetime | None = None,
     ) -> InvestigationReport:
         normalized_ticker = ticker.upper().strip()
         requested_date = (
@@ -134,7 +137,15 @@ class InvestigationService:
         await self._stage(trace, on_stage, "discover_and_freeze_documents", "RUNNING")
         raw_evidence = await self.tools.get_evidence(normalized_ticker, requested_date)
         raw_evidence.extend(supplied_evidence or [])
-        evidence = self._eligible_evidence(raw_evidence, session)
+        evidence = self._deduplicate_evidence(
+            self._eligible_evidence(raw_evidence, session)
+        )
+        evidence = self._apply_evidence_policy(
+            evidence,
+            primary_only=primary_only,
+            excluded_evidence_ids=excluded_evidence_ids or [],
+            evidence_cutoff=evidence_cutoff,
+        )
         await self._stage(trace, on_stage, "discover_and_freeze_documents", "COMPLETED")
 
         await self._stage(trace, on_stage, "extract_exact_passages", "RUNNING")
@@ -166,6 +177,20 @@ class InvestigationService:
                     impact="Causal confidence is capped and no-catalyst cannot be concluded.",
                 )
             )
+        refinement_limited = bool(
+            primary_only or excluded_evidence_ids or evidence_cutoff is not None
+        )
+        if refinement_limited:
+            coverage_gaps.append(
+                CoverageGap(
+                    gap_id="REFINEMENT_SCOPE_LIMITED",
+                    capability="refinement_scope",
+                    provider="user_refinement",
+                    reason="The child version intentionally filtered the acquired evidence set.",
+                    impact="The scoped result cannot establish that no catalyst existed.",
+                )
+            )
+        effective_coverage_complete = coverage_complete and not refinement_limited
 
         await self._stage(trace, on_stage, "assemble_evidence_packet", "RUNNING")
         packet = build_evidence_packet(
@@ -190,6 +215,9 @@ class InvestigationService:
                 market_move=market_move,
                 coverage_gaps=coverage_gaps,
                 conflicts=market_data.conflicts,
+                primary_only=primary_only,
+                excluded_evidence_ids=excluded_evidence_ids or [],
+                evidence_cutoff=evidence_cutoff,
                 trace=trace,
                 on_stage=on_stage,
             )
@@ -208,11 +236,25 @@ class InvestigationService:
 
         causal = [item for item in evidence if item.role == EvidenceRole.CAUSAL_INPUT]
         selected = validated.leading if validated else None
+        evidence_registry = {item.evidence_id: item for item in evidence}
+        selected_support = (
+            [
+                evidence_registry[evidence_id]
+                for evidence_id in selected.supporting_evidence_ids
+                if evidence_id in evidence_registry
+            ]
+            if selected
+            else []
+        )
         if selected:
+            evidence_title = selected_support[0].title
             claim = Claim(
                 claim_id="C1",
                 claim_type=ClaimType.CAUSE,
-                text=selected.statement,
+                text=(
+                    f"{evidence_title} is the leading evidence-backed explanation for the "
+                    f"{normalized_ticker} move."
+                ),
                 supporting_evidence_ids=selected.supporting_evidence_ids,
                 contradicting_evidence_ids=selected.contradicting_evidence_ids,
             )
@@ -222,34 +264,53 @@ class InvestigationService:
             summary = (
                 "No contemporaneous primary evidence was found after complete disclosure "
                 "coverage checks."
-                if not causal and coverage_complete
+                if not causal and effective_coverage_complete
                 else "The available evidence cannot support a validated causal explanation."
             )
             claim = Claim(claim_id="C1", claim_type=ClaimType.UNRESOLVED, text=summary)
             outcome = (
                 InvestigationOutcome.NO_IDENTIFIABLE_CATALYST
-                if not causal and coverage_complete and reasoning_error is None
+                if not causal and effective_coverage_complete and reasoning_error is None
                 else InvestigationOutcome.INSUFFICIENT_EVIDENCE
             )
             primary = PrimaryAssessment(primary_claim_id=None, summary=summary)
 
         await self._stage(trace, on_stage, "confidence_and_abstention", "RUNNING")
+        primary_authorities = {
+            "PRIMARY_ISSUER",
+            "APPROVED_OFFICIAL",
+            "USER_SUPPLIED_OFFICIAL",
+        }
+        has_primary_evidence = any(
+            item.authority in primary_authorities for item in selected_support
+        )
+        selected_timings = [
+            classify_event(item.published_at, session) for item in selected_support
+        ]
+        needs_intraday_data = any(
+            item.session_relationship == "DURING_SESSION" for item in selected_timings
+        )
         confidence = score_confidence(
             ConfidenceFeatures(
-                source_authority=1.0 if selected else 0.2,
+                source_authority=(
+                    1.0 if has_primary_evidence else 0.5 if selected_support else 0.2
+                ),
                 temporal_eligibility=1.0 if selected else 0.0,
                 market_signature_fit=0.9 if selected and market_move.is_unusual else 0.4,
                 quantitative_consistency=0.9 if market_move.is_unusual else 0.5,
                 independent_corroboration=(
                     0.7 if selected and len(selected.supporting_evidence_ids) > 1 else 0.0
                 ),
-                coverage_completeness=1.0 if coverage_complete else 0.4,
+                coverage_completeness=1.0 if effective_coverage_complete else 0.4,
                 alternative_strength=(
                     0.4 if validated and len(validated.hypotheses) > 1 else 0.0
                 ),
-                has_primary_evidence=bool(selected),
-                disclosure_coverage_complete=coverage_complete,
+                has_primary_evidence=has_primary_evidence,
+                disclosure_coverage_complete=effective_coverage_complete,
                 has_material_conflict=bool(market_data.conflicts),
+                timing_resolved=not needs_intraday_data,
+                needs_intraday_data=needs_intraday_data,
+                has_intraday_data=False,
             )
         )
         confidence = confidence.model_copy(
@@ -284,7 +345,6 @@ class InvestigationService:
                 )
             )
         claim.confidence = confidence.score
-        evidence_registry = {item.evidence_id: item for item in evidence}
         validate_claims([claim], evidence_registry)
         claim_support = [assess_claim_support(claim, evidence_registry)]
         await self._stage(trace, on_stage, "confidence_and_abstention", "COMPLETED")
@@ -346,7 +406,13 @@ class InvestigationService:
             validation_results=validations,
             coverage_gaps=coverage_gaps,
             conflicts=market_data.conflicts,
-            coverage_status="COMPLETE" if coverage_complete else "PARTIAL_DISCLOSURE_COVERAGE",
+            coverage_status=(
+                "COMPLETE"
+                if effective_coverage_complete
+                else "SCOPED_REFINEMENT"
+                if refinement_limited
+                else "PARTIAL_DISCLOSURE_COVERAGE"
+            ),
             model_configuration=(
                 getattr(
                     self.reasoner,
@@ -372,6 +438,9 @@ class InvestigationService:
         market_move,
         coverage_gaps: list[CoverageGap],
         conflicts,
+        primary_only: bool,
+        excluded_evidence_ids: list[str],
+        evidence_cutoff: datetime | None,
         trace: list[dict[str, str]],
         on_stage: StageObserver | None,
     ) -> tuple[ValidatedReasoning | None, list[EvidenceItem], EvidencePacket]:
@@ -425,6 +494,13 @@ class InvestigationService:
                     for item in self._eligible_evidence(retrieved, session)
                     if item.evidence_id not in known
                 )
+                evidence = self._deduplicate_evidence(evidence)
+                evidence = self._apply_evidence_policy(
+                    evidence,
+                    primary_only=primary_only,
+                    excluded_evidence_ids=excluded_evidence_ids,
+                    evidence_cutoff=evidence_cutoff,
+                )
                 packet = build_evidence_packet(
                     ticker, market_move, evidence, coverage_gaps, conflicts
                 )
@@ -460,6 +536,53 @@ class InvestigationService:
                 item = item.model_copy(update={"role": EvidenceRole.RETROSPECTIVE_CONTEXT})
             eligible.append(item)
         return eligible
+
+    @staticmethod
+    def _deduplicate_evidence(evidence: list[EvidenceItem]) -> list[EvidenceItem]:
+        primary_authorities = {
+            "PRIMARY_ISSUER",
+            "APPROVED_OFFICIAL",
+            "USER_SUPPLIED_OFFICIAL",
+        }
+
+        def priority(item: EvidenceItem) -> tuple[int, int]:
+            return (
+                0 if item.role == EvidenceRole.CAUSAL_INPUT else 1,
+                0 if item.authority in primary_authorities else 1,
+            )
+
+        unique: list[EvidenceItem] = []
+        positions: dict[str, int] = {}
+        for item in evidence:
+            position = positions.get(item.content_hash)
+            if position is None:
+                positions[item.content_hash] = len(unique)
+                unique.append(item)
+            elif priority(item) < priority(unique[position]):
+                unique[position] = item
+        return unique
+
+    @staticmethod
+    def _apply_evidence_policy(
+        evidence: list[EvidenceItem],
+        *,
+        primary_only: bool,
+        excluded_evidence_ids: list[str],
+        evidence_cutoff: datetime | None,
+    ) -> list[EvidenceItem]:
+        primary_authorities = {
+            "PRIMARY_ISSUER",
+            "APPROVED_OFFICIAL",
+            "USER_SUPPLIED_OFFICIAL",
+        }
+        excluded = set(excluded_evidence_ids)
+        return [
+            item
+            for item in evidence
+            if item.evidence_id not in excluded
+            and (evidence_cutoff is None or item.published_at <= evidence_cutoff)
+            and (not primary_only or item.authority in primary_authorities)
+        ]
 
     @staticmethod
     def _non_trading_report(

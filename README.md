@@ -56,6 +56,8 @@ The workbench can attach PDF, HTML or text sources up to 20 MB. URL ingestion is
 cd web && pnpm test && pnpm build
 ```
 
+Use `evals/run_recorded_evals.py --write-results` only when intentionally refreshing the versioned evaluation artifacts.
+
 ## Known limits
 
 - Confidence is a rule-governed evidence-strength band, not a probability, and remains `UNCALIBRATED`.

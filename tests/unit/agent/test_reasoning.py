@@ -82,6 +82,16 @@ def test_unknown_evidence_id_is_rejected() -> None:
         )
 
 
+def test_unrelated_causal_statement_cannot_hide_behind_a_valid_evidence_id() -> None:
+    unrelated = proposal().model_copy(
+        update={"statement": "A takeover offer from a rival caused the price increase."}
+    )
+    with pytest.raises(ReasoningValidationError, match="textually supported"):
+        validate_reasoning(
+            HypothesisBatch(hypotheses=[unrelated]), challenge(), packet()
+        )
+
+
 @pytest.mark.parametrize(
     ("role", "challenge_updates", "message"),
     [

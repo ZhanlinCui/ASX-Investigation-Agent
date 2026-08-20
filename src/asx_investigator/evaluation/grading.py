@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import math
+
 from asx_investigator.domain.models import ClaimType, EvidenceRole, InvestigationReport
 from asx_investigator.evaluation.models import (
     CaseEvaluation,
     EvalCaseManifest,
     GraderCheck,
 )
+from asx_investigator.market.sessions import resolve_session
 
 MATERIAL_CLAIMS = {ClaimType.CAUSE, ClaimType.CONTRIBUTOR, ClaimType.MECHANICAL}
 
@@ -37,8 +40,38 @@ def grade_report(
     )
     temporal_ok = not (cited_ids & blacklisted) and all(
         evidence[evidence_id].role == EvidenceRole.CAUSAL_INPUT
+        and evidence[evidence_id].published_at <= manifest.evidence_cutoff
         for evidence_id in cited_ids
         if evidence_id in evidence
+    )
+    expected_session = resolve_session(manifest.trade_date)
+    session_ok = (
+        report.trade_date == manifest.trade_date
+        and report.timezone_label == expected_session.timezone_label
+    )
+    numeric_values = (
+        [
+            value
+            for value in report.market_move.model_dump().values()
+            if isinstance(value, int | float) and not isinstance(value, bool)
+        ]
+        if report.market_move
+        else []
+    )
+    numeric_ok = all(math.isfinite(value) for value in numeric_values) and (
+        report.market_move is None or report.market_move.turnover_aud >= 0
+    )
+    mechanical = next(
+        (item for item in report.validation_results if item.kind == "CORPORATE_ACTION_CHECK"),
+        None,
+    )
+    mechanical_ok = not manifest.mechanical_flags or (
+        mechanical is not None
+        and str(mechanical.status) == "PASS"
+        and (
+            "CHECKED_NO_EVENT" not in manifest.mechanical_flags
+            or "0 corporate actions" in mechanical.summary
+        )
     )
     if manifest.abstention_policy == "REQUIRED":
         abstention_ok = str(report.outcome) in {
@@ -90,6 +123,24 @@ def grade_report(
             name="temporal_integrity",
             passed=temporal_ok,
             detail=f"blacklisted_citations={sorted(cited_ids & blacklisted)}",
+        ),
+        GraderCheck(
+            name="session_integrity",
+            passed=session_ok,
+            detail=(
+                f"trade_date={report.trade_date}; timezone={report.timezone_label}; "
+                f"expected_timezone={expected_session.timezone_label}"
+            ),
+        ),
+        GraderCheck(
+            name="numeric_integrity",
+            passed=numeric_ok,
+            detail=f"finite_values={numeric_ok}; values_checked={len(numeric_values)}",
+        ),
+        GraderCheck(
+            name="mechanical_flags",
+            passed=mechanical_ok,
+            detail=f"expected={manifest.mechanical_flags}; validation={mechanical}",
         ),
         GraderCheck(
             name="abstention",

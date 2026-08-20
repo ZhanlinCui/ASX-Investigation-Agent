@@ -124,7 +124,7 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 - `POST /api/v1/investigations/{case_id}/retry`
 - `POST /api/v1/sources/upload`
 - `POST /api/v1/sources/fetch`
-- `GET /api/v1/evidence/{evidence_id}/content`
+- `GET /api/v1/evidence/{evidence_id}/content?version_id={version_id}` for case-scoped evidence; globally unique uploaded-source IDs may omit the query parameter
 
 Existing create, get, events, JSON and Markdown behaviour remains available. SSE events have a monotonically increasing sequence and can replay from `after_sequence` or the standard `Last-Event-ID` header.
 

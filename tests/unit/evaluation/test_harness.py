@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import evals.run_recorded_evals as eval_runner
 from asx_investigator.evaluation.grading import grade_report
 from asx_investigator.evaluation.manifests import (
     HoldoutUnavailable,
@@ -104,3 +105,18 @@ async def test_all_development_policy_sentinels_execute() -> None:
 
     assert result.status == "PASSED"
     assert result.raw_counts == {"passed": 24, "failed": 0, "total": 24}
+
+
+async def test_eval_artifacts_are_replaced_only_when_explicitly_requested(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(eval_runner, "RESULTS_ROOT", tmp_path)
+
+    await eval_runner.main(write_results=False)
+    assert list(tmp_path.iterdir()) == []
+
+    await eval_runner.main(write_results=True)
+    assert {path.name for path in tmp_path.iterdir()} == {
+        "phase2-evaluation.json",
+        "phase2-evaluation.md",
+    }

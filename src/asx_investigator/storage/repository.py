@@ -259,28 +259,45 @@ class SQLiteCaseRepository:
             for row in rows
         ]
 
-    async def find_evidence_content(self, evidence_id: str) -> dict[str, object]:
+    async def find_evidence_content(
+        self, evidence_id: str, *, version_id: str | None = None
+    ) -> dict[str, object]:
         async with aiosqlite.connect(self.database_path) as connection:
             connection.row_factory = aiosqlite.Row
-            row = await (
-                await connection.execute(
-                    """SELECT passage, locator, page FROM source_passages
-                    WHERE evidence_id = ?""",
-                    (evidence_id,),
-                )
-            ).fetchone()
-            if row is None:
+            if version_id is not None:
                 row = await (
                     await connection.execute(
                         """SELECT passage, locator, page FROM evidence_records
-                        WHERE evidence_id = ? ORDER BY retrieved_at DESC LIMIT 1""",
+                        WHERE version_id = ? AND evidence_id = ?""",
+                        (version_id, evidence_id),
+                    )
+                ).fetchone()
+            else:
+                row = await (
+                    await connection.execute(
+                        """SELECT passage, locator, page FROM source_passages
+                        WHERE evidence_id = ?""",
                         (evidence_id,),
                     )
                 ).fetchone()
+                if row is None:
+                    rows = await (
+                        await connection.execute(
+                            """SELECT passage, locator, page FROM evidence_records
+                            WHERE evidence_id = ? ORDER BY version_id""",
+                            (evidence_id,),
+                        )
+                    ).fetchall()
+                    if len(rows) > 1:
+                        raise ValueError(
+                            "Evidence ID is version-scoped; provide version_id"
+                        )
+                    row = rows[0] if rows else None
         if row is None:
             raise KeyError(evidence_id)
         return {
             "evidence_id": evidence_id,
+            "version_id": version_id,
             "passage": str(row["passage"]),
             "locator": str(row["locator"]) if row["locator"] is not None else None,
             "page": int(row["page"]) if row["page"] is not None else None,
