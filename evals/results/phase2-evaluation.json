@@ -1,0 +1,1910 @@
+{
+  "development": {
+    "suite_version": "phase2-dev-v1",
+    "fixture_kind": "SYNTHETIC_POLICY_SENTINEL",
+    "status": "PASSED",
+    "raw_counts": {
+      "passed": 24,
+      "failed": 0,
+      "total": 24
+    },
+    "proportions": {
+      "passed": 1.0
+    },
+    "cases": [
+      {
+        "case_id": "dev-01-disclosure",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-02-disclosure",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-03-disclosure",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-04-mechanical",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-05-mechanical",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-06-mechanical",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-07-sector",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-08-sector",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-09-sector",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-10-commodity",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-11-commodity",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-12-commodity",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-13-macro",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-14-macro",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-15-macro",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-16-multi",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-17-multi",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-18-multi",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=EXPLAINED; expected=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=ISSUER_DISCLOSURE; leading=['E1']; required=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=['ISSUER_DISCLOSURE']",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=1; cited_ids=['E1']",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=FORBIDDEN; outcome=EXPLAINED",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=HIGH",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-19-ambiguous",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=INSUFFICIENT_EVIDENCE; expected=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=None; leading=[]; required=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=0; cited_ids=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=LOW",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-20-ambiguous",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=INSUFFICIENT_EVIDENCE; expected=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=None; leading=[]; required=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=0; cited_ids=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=LOW",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-21-ambiguous",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=INSUFFICIENT_EVIDENCE; expected=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=None; leading=[]; required=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=0; cited_ids=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=LOW",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-22-no-catalyst",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=NO_IDENTIFIABLE_CATALYST; expected=NO_IDENTIFIABLE_CATALYST",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=None; leading=[]; required=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=0; cited_ids=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=REQUIRED; outcome=NO_IDENTIFIABLE_CATALYST",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=LOW",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-23-no-catalyst",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=NO_IDENTIFIABLE_CATALYST; expected=NO_IDENTIFIABLE_CATALYST",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=None; leading=[]; required=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=0; cited_ids=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=REQUIRED; outcome=NO_IDENTIFIABLE_CATALYST",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=COMPLETE; expected=COMPLETE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=LOW",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      },
+      {
+        "case_id": "dev-24-no-catalyst",
+        "passed": true,
+        "checks": [
+          {
+            "name": "expected_outcome",
+            "passed": true,
+            "detail": "observed=INSUFFICIENT_EVIDENCE; expected=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "top_1_attribution",
+            "passed": true,
+            "detail": "label=None; leading=[]; required=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "top_2_attribution",
+            "passed": true,
+            "detail": "top_two_labels=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "grounding",
+            "passed": true,
+            "detail": "material_claims=0; cited_ids=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "temporal_integrity",
+            "passed": true,
+            "detail": "blacklisted_citations=[]",
+            "hard_gate": true
+          },
+          {
+            "name": "abstention",
+            "passed": true,
+            "detail": "policy=REQUIRED; outcome=INSUFFICIENT_EVIDENCE",
+            "hard_gate": true
+          },
+          {
+            "name": "coverage",
+            "passed": true,
+            "detail": "observed=PARTIAL_DISCLOSURE_COVERAGE; expected=PARTIAL_DISCLOSURE_COVERAGE",
+            "hard_gate": true
+          },
+          {
+            "name": "provider_failure_semantics",
+            "passed": true,
+            "detail": "Provider failure must not be rendered as no identifiable catalyst.",
+            "hard_gate": true
+          },
+          {
+            "name": "confidence_semantics",
+            "passed": true,
+            "detail": "band=LOW",
+            "hard_gate": true
+          },
+          {
+            "name": "latency",
+            "passed": true,
+            "detail": "observed_ms=1; max_ms=30000",
+            "hard_gate": true
+          },
+          {
+            "name": "cost",
+            "passed": true,
+            "detail": "observed_aud=0.000000; max_aud=1.000000",
+            "hard_gate": true
+          }
+        ],
+        "raw_counts": {
+          "passed": 11,
+          "failed": 0
+        },
+        "latency_ms": 1,
+        "estimated_cost_aud": 0.0
+      }
+    ],
+    "limitations": [
+      "Synthetic policy sentinels test safety and orchestration, not historical accuracy.",
+      "Point-in-time performance requires adjudicated frozen issuer and market snapshots."
+    ]
+  },
+  "holdout": {
+    "suite_version": "sealed-holdout",
+    "fixture_kind": "SEALED_POINT_IN_TIME",
+    "status": "NOT_RUN",
+    "raw_counts": {
+      "passed": 0,
+      "failed": 0,
+      "total": 0
+    },
+    "proportions": {
+      "passed": 0.0
+    },
+    "cases": [],
+    "limitations": [
+      "ASX_EVAL_HOLDOUT_ROOT was not provided."
+    ]
+  }
+}

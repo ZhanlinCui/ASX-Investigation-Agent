@@ -30,6 +30,7 @@ class EvidenceGapRequest(BaseModel):
 class HypothesisProposal(BaseModel):
     hypothesis_id: str = Field(pattern=r"^H[1-5]$")
     rank: int = Field(ge=1, le=5)
+    driver_label: str = Field(default="UNCLASSIFIED", min_length=3, max_length=80)
     statement: str = Field(min_length=10, max_length=520)
     expected_signature: str = Field(min_length=5, max_length=300)
     supporting_evidence_ids: list[str] = Field(min_length=1, max_length=12)
@@ -120,6 +121,7 @@ def validate_reasoning(
                     if proposal.hypothesis_id == selected_id
                     else HypothesisStatus.ALTERNATIVE
                 ),
+                driver_label=proposal.driver_label,
                 statement=proposal.statement,
                 expected_signature=proposal.expected_signature,
                 supporting_evidence_ids=proposal.supporting_evidence_ids,

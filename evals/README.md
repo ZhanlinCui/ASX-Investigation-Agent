@@ -1,11 +1,29 @@
 # Evaluation Harness
 
-Run the deterministic release checks with:
+Run the deterministic suite from the repository root:
 
 ```bash
 .venv/bin/python evals/run_recorded_evals.py
 ```
 
-The harness verifies the things most likely to create a convincingly wrong output: a causal claim must be time-eligible, cited, bounded by a visible confidence score, and visibly marked `UNCALIBRATED` until held-out calibration is complete.
+The command writes both JSON and Markdown results to `evals/results/`. It exits non-zero when an executed hard gate fails.
 
-The recorded BHP case is a regression fixture, not performance evidence. Live cases must be frozen as source snapshots before they enter the evaluation set. Add blind cases to `evals/cases/` only after their expected claims and source locators have been independently adjudicated.
+## Development suite
+
+`cases/development_suite.json` contains 24 versioned synthetic policy sentinels across disclosure, mechanical, sector, commodity, macro, multi-catalyst, ambiguous and no-catalyst classes. They exercise lifecycle outcome, top-1/top-2 attribution, grounding, temporal integrity, abstention, provider-failure semantics, confidence semantics, latency and cost.
+
+These fixtures validate deterministic safety and orchestration. They are not evidence of historical causal accuracy and must never be reported as such.
+
+## Sealed holdout
+
+Holdout labels remain outside the repository. Set `ASX_EVAL_HOLDOUT_ROOT` to a directory containing:
+
+```text
+holdout.json
+reports/
+  <case_id>.json
+```
+
+Each report artifact contains `report`, `latency_ms` and `estimated_cost_aud`. When the root or an artifact is missing, the harness reports `NOT_RUN`; it never converts missing holdout evidence into a pass.
+
+The release remains recorded-only until 24 independently adjudicated point-in-time development snapshots and the 12-case sealed holdout are supplied and pass. LLM judges may be used for diagnostics, but cannot alter a hard-gate result.

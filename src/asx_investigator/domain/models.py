@@ -145,6 +145,7 @@ class Hypothesis(BaseModel):
     hypothesis_id: str
     rank: int = Field(ge=1, le=5)
     status: HypothesisStatus
+    driver_label: str = "UNCLASSIFIED"
     statement: str
     expected_signature: str | None = None
     supporting_evidence_ids: list[str] = Field(default_factory=list)

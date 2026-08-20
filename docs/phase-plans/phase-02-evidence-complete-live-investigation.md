@@ -99,12 +99,13 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 
 ### P2.6: Evaluation
 
-- [ ] Define a versioned case-manifest schema and deterministic grader result schema.
-- [ ] Build 24 development/regression cases across disclosure, mechanical, sector, commodity, macro, multi-catalyst, ambiguous and no-catalyst classes.
-- [ ] Keep 12 holdout labels outside the repository and load them from `ASX_EVAL_HOLDOUT_ROOT`.
-- [ ] Add provider, temporal, grounding, attribution, abstention, latency and cost graders.
-- [ ] Publish JSON and Markdown reports with raw counts and per-case failures.
-- [ ] Gate: all hard release gates pass; no unrun live gate is reported as passed.
+- [x] Define a versioned case-manifest schema and deterministic grader result schema.
+- [x] Build 24 synthetic development policy sentinels across disclosure, mechanical, sector, commodity, macro, multi-catalyst, ambiguous and no-catalyst classes.
+- [x] Keep exactly 12 holdout labels outside the repository and load them from `ASX_EVAL_HOLDOUT_ROOT`.
+- [x] Add provider, temporal, grounding, top-1/top-2 attribution, abstention, latency and cost graders.
+- [x] Publish JSON and Markdown reports with raw counts and per-case failures.
+- [ ] Freeze and adjudicate 24 real point-in-time development cases; synthetic sentinels are not accuracy evidence.
+- [ ] Gate: sealed holdout and credentialed live gates remain `NOT_RUN`; neither is reported as passed.
 
 ### P2.7: Workbench and release
 

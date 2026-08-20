@@ -355,6 +355,7 @@ class InvestigationService:
                     HypothesisProposal(
                         hypothesis_id="H1",
                         rank=1,
+                        driver_label="ISSUER_DISCLOSURE",
                         statement=(
                             f"{causal[0].title} is the leading explanation for the recorded "
                             f"{ticker} move."
