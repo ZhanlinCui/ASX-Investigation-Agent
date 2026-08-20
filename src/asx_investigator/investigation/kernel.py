@@ -33,6 +33,7 @@ from asx_investigator.domain.models import (
     InvestigationOutcome,
     InvestigationReport,
     InvestigationStatus,
+    IssuerReferenceFact,
     PrimaryAssessment,
     ProviderCallDiagnostic,
     TradingSession,
@@ -91,8 +92,10 @@ class InvestigationKernel:
         request_artifact_hash: str | None = None,
         input_artifact_hashes: list[str] | None = None,
         resume_checkpoint: CheckpointEnvelope | None = None,
+        context_facts: list[IssuerReferenceFact] | None = None,
     ) -> InvestigationReport:
         normalized_ticker = ticker.upper().strip()
+        admitted_context_facts = list(context_facts or [])
         requested_date = (
             date.fromisoformat(trade_date) if isinstance(trade_date, str) else trade_date
         )
@@ -125,6 +128,10 @@ class InvestigationKernel:
                 raise ValueError("checkpoint output artifacts do not match its typed state")
             if state.completed_stage != resume_checkpoint.stage:
                 raise ValueError("checkpoint stage does not match its typed state")
+            if state.packet is not None and sorted(
+                fact.ledger_hash for fact in state.packet.context_facts
+            ) != sorted(fact.ledger_hash for fact in admitted_context_facts):
+                raise ValueError("checkpoint context facts do not match current inputs")
             trace = list(state.trace)
             trace.append({"node": resume_checkpoint.stage, "status": "RESUMED"})
         else:
@@ -417,6 +424,9 @@ class InvestigationKernel:
                 coverage_gaps,
                 market_data.conflicts,
                 case_version_id=state.version_id,
+                # Reference facts remain typed packet context. They never enter the
+                # evidence list, assertion builder, claim compiler or mechanism tests.
+                context_facts=admitted_context_facts,
             )
             await completed("assemble_evidence_packet")
         packet = state.packet
@@ -786,6 +796,7 @@ class InvestigationKernel:
                     coverage_gaps,
                     conflicts,
                     case_version_id=packet.case_version_id,
+                    context_facts=packet.context_facts,
                 )
                 checkpoint_state.evidence = list(evidence)
                 checkpoint_state.packet = packet

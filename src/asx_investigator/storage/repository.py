@@ -14,6 +14,7 @@ from asx_investigator.investigation.checkpoints import (
     CHECKPOINT_SCHEMA_VERSION,
     CheckpointEnvelope,
 )
+from asx_investigator.storage.memory import SHARED_MEMORY_SCHEMA
 
 
 class CaseVersionImmutableError(RuntimeError):
@@ -156,7 +157,7 @@ CREATE INDEX IF NOT EXISTS idx_checkpoints_compatible
     ON checkpoints(version_id, policy_version, schema_version, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_records_version_hash
     ON evidence_records(version_id, content_hash);
-"""
+""" + SHARED_MEMORY_SCHEMA
 
 
 class SQLiteCaseRepository:

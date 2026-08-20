@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -257,6 +259,74 @@ class LedgerEntry(BaseModel):
     validation_status: ValidationStatus | None = None
     validation_summary: str | None = Field(default=None, max_length=520)
     created_at: datetime
+
+
+class SharedMemoryEntry(BaseModel):
+    """An admitted shared-memory record; it is never case reasoning input by itself."""
+
+    entry_id: str = Field(min_length=1, max_length=80)
+    memory_type: str = Field(min_length=1, max_length=80)
+    ticker: str | None = Field(default=None, min_length=2, max_length=12)
+    payload: dict[str, object] = Field(default_factory=dict)
+    source_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_url: str | None = Field(default=None, min_length=1, max_length=2_000)
+    scope: str = Field(min_length=1, max_length=80)
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    policy_version: str = Field(min_length=1, max_length=80)
+    created_at: datetime
+    revoked_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_validity_range(self) -> SharedMemoryEntry:
+        for name, value in (
+            ("valid_from", self.valid_from),
+            ("valid_until", self.valid_until),
+            ("created_at", self.created_at),
+            ("revoked_at", self.revoked_at),
+        ):
+            if value is not None and value.tzinfo is None:
+                raise ValueError(f"{name} must include a timezone")
+        if self.valid_from and self.valid_until and self.valid_from >= self.valid_until:
+            raise ValueError("valid_from must be before valid_until")
+        return self
+
+
+class IssuerReferenceFact(BaseModel):
+    """The only shared-memory value allowed into a reasoning packet."""
+
+    entry_id: str = Field(min_length=1, max_length=80)
+    ticker: str = Field(min_length=2, max_length=12)
+    field: str = Field(min_length=1, max_length=120)
+    value: str = Field(min_length=1, max_length=2_000)
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_url: str = Field(min_length=1, max_length=2_000)
+    scope: Literal["CONTEXT_ONLY"] = "CONTEXT_ONLY"
+    valid_from: datetime | None = None
+    valid_until: datetime
+    policy_version: str = Field(min_length=1, max_length=80)
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_reference_validity(self) -> IssuerReferenceFact:
+        self.ticker = self.ticker.upper().strip()
+        for name, value in (
+            ("valid_from", self.valid_from),
+            ("valid_until", self.valid_until),
+            ("created_at", self.created_at),
+        ):
+            if value is not None and value.tzinfo is None:
+                raise ValueError(f"{name} must include a timezone")
+        if self.valid_from and self.valid_from >= self.valid_until:
+            raise ValueError("valid_from must be before valid_until")
+        return self
+
+    @property
+    def ledger_hash(self) -> str:
+        """Hash the admissible entry identity without exposing its text in the ledger."""
+
+        value = f"shared-memory:{self.entry_id}:{self.source_hash}"
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 class BandCalibrationMetadata(BaseModel):

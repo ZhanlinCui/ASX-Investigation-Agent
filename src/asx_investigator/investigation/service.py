@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from asx_investigator.agent.reasoning import InvestigationReasoner
-from asx_investigator.domain.models import EvidenceItem, InvestigationReport
+from asx_investigator.domain.models import (
+    EvidenceItem,
+    InvestigationReport,
+    IssuerReferenceFact,
+)
 from asx_investigator.investigation.checkpoints import CheckpointEnvelope
 from asx_investigator.investigation.kernel import InvestigationKernel, StageObserver
 from asx_investigator.providers.protocols import InvestigationTools
@@ -43,6 +47,7 @@ class InvestigationService:
         request_artifact_hash: str | None = None,
         input_artifact_hashes: list[str] | None = None,
         resume_checkpoint: CheckpointEnvelope | None = None,
+        context_facts: list[IssuerReferenceFact] | None = None,
     ) -> InvestigationReport:
         return await self.kernel.run(
             ticker,
@@ -57,4 +62,5 @@ class InvestigationService:
             request_artifact_hash,
             input_artifact_hashes,
             resume_checkpoint,
+            context_facts,
         )

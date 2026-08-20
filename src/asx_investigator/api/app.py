@@ -23,6 +23,7 @@ from asx_investigator.domain.models import (
     EvidenceRole,
     InvestigationReport,
     InvestigationStatus,
+    IssuerReferenceFact,
     TraceReference,
 )
 from asx_investigator.evidence.ingestion import (
@@ -46,6 +47,7 @@ from asx_investigator.providers.recorded import RecordedToolGateway
 from asx_investigator.report.markdown import render_markdown
 from asx_investigator.settings import Settings
 from asx_investigator.storage.artifacts import ArtifactStore
+from asx_investigator.storage.memory import SharedMemoryRepository
 from asx_investigator.storage.repository import CaseVersionRecord, SQLiteCaseRepository
 
 
@@ -125,17 +127,22 @@ class CaseManager:
         repository: SQLiteCaseRepository,
         evidence_registry: SQLiteEvidenceRegistry,
         recorded_service: InvestigationService | None = None,
+        shared_memory: SharedMemoryRepository | None = None,
     ) -> None:
         self.service = service
         self.recorded_service = recorded_service or service
         self.repository = repository
         self.evidence_registry = evidence_registry
+        self.shared_memory = shared_memory or SharedMemoryRepository(
+            repository.database_path
+        )
         self.tasks: set[asyncio.Task[None]] = set()
         self._tasks_by_version: dict[str, asyncio.Task[None]] = {}
         self._case_locks: dict[str, asyncio.Lock] = {}
 
     async def start(self) -> None:
         await self.repository.initialize()
+        await self.shared_memory.initialize()
         for record in await self.repository.list_recoverable_versions():
             request = InvestigationRequest.model_validate(record.request_payload)
             try:
@@ -248,10 +255,16 @@ class CaseManager:
             canonical_json_bytes(request.model_dump(mode="json"))
         ).hexdigest()
 
-    async def _initial_input_hashes(self, request: InvestigationRequest) -> list[str]:
+    async def _initial_input_hashes(
+        self,
+        request: InvestigationRequest,
+        *,
+        context_facts: list[IssuerReferenceFact] | None = None,
+    ) -> list[str]:
         request_hash = self._request_artifact_hash(request)
         source_hashes = await self.repository.get_source_artifact_hashes(request.source_ids)
-        return sorted(set([request_hash, *source_hashes]))
+        memory_hashes = [fact.ledger_hash for fact in context_facts or []]
+        return sorted(set([request_hash, *source_hashes, *memory_hashes]))
 
     async def _compatible_checkpoint(
         self,
@@ -270,7 +283,11 @@ class CaseManager:
             return None, "SCHEMA_MISMATCH"
         try:
             state = InvestigationState.model_validate(candidate.typed_state_json)
-            expected_initial_inputs = await self._initial_input_hashes(request)
+            context_facts = await self.shared_memory.list_context_facts(request.ticker)
+            expected_initial_inputs = await self._initial_input_hashes(
+                request,
+                context_facts=context_facts,
+            )
             if state.version_id != record.version_id:
                 return None, "VERSION_MISMATCH"
             if state.request_artifact_hash != self._request_artifact_hash(request):
@@ -378,6 +395,7 @@ class CaseManager:
                     event_payload,
                 )
 
+            context_facts = await self.shared_memory.list_context_facts(request.ticker)
             supplied_evidence = await self.repository.get_source_evidence(request.source_ids)
             for item in supplied_evidence:
                 await self.evidence_registry.register(record.version_id, item)
@@ -421,8 +439,12 @@ class CaseManager:
                 evidence_cutoff=request.evidence_cutoff,
                 version_id=record.version_id,
                 request_artifact_hash=self._request_artifact_hash(request),
-                input_artifact_hashes=await self._initial_input_hashes(request),
+                input_artifact_hashes=await self._initial_input_hashes(
+                    request,
+                    context_facts=context_facts,
+                ),
                 resume_checkpoint=resume_checkpoint,
+                context_facts=context_facts,
             )
             report.case_id = record.case_id
             report.run_id = record.version_id
@@ -575,6 +597,7 @@ def create_app(
         allow_headers=["Content-Type", "Last-Event-ID"],
     )
     app.state.case_manager = manager
+    app.state.shared_memory = manager.shared_memory
     app.state.artifact_store = artifact_store
     app.state.source_ingestor = source_ingestor
 
