@@ -1,5 +1,7 @@
 from datetime import date, datetime
 
+import pytest
+
 from asx_investigator.market.sessions import classify_event, resolve_session
 
 
@@ -53,3 +55,39 @@ def test_older_evidence_is_context_not_an_automatic_current_session_cause() -> N
 
     assert timing.session_relationship == "OLDER_CONTEXT"
     assert timing.eligible_same_day_cause is False
+
+
+@pytest.mark.parametrize("weekend_year", (2021, 2026))
+def test_weekend_anzac_day_does_not_create_a_generic_observed_asx_closure(
+    weekend_year: int,
+) -> None:
+    observed_monday = date(weekend_year, 4, 26 if weekend_year == 2021 else 27)
+
+    session = resolve_session(observed_monday)
+
+    assert session.is_trading_day is True
+
+
+def test_weekday_anzac_day_remains_an_asx_cash_holiday() -> None:
+    session = resolve_session(date(2022, 4, 25))
+
+    assert session.is_trading_day is False
+
+
+def test_christmas_and_boxing_day_observance_do_not_collide_in_2027() -> None:
+    boxing_observed = resolve_session(date(2027, 12, 28))
+    last_session_before_christmas = resolve_session(date(2027, 12, 24))
+
+    assert boxing_observed.is_trading_day is False
+    assert boxing_observed.previous_session == date(2027, 12, 24)
+    assert boxing_observed.next_session == date(2027, 12, 29)
+    assert last_session_before_christmas.market_close.isoformat() == "2027-12-24T14:10:00+11:00"
+
+
+@pytest.mark.parametrize("year", (2022, 2033))
+def test_sunday_christmas_keeps_both_observed_holidays(year: int) -> None:
+    second_observed_holiday = resolve_session(date(year, 12, 27))
+
+    assert second_observed_holiday.is_trading_day is False
+    assert second_observed_holiday.previous_session == date(year, 12, 23)
+    assert second_observed_holiday.next_session == date(year, 12, 28)

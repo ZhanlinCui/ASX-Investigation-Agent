@@ -1,13 +1,13 @@
 # Phase 3: Causal Investigation Intelligence
 
-**Status:** Proposed design
+**Status:** Implemented design reference; Phase 3 external release gates OPEN (`NOT_RUN`)
 **Date:** 20 August 2026
-**Current baseline:** Phase 2.8 recorded release candidate
+**Current baseline:** Phase 3 recorded release candidate
 **Primary decision:** Build a causal investigation kernel, not a general multi-agent platform
 
 ## Purpose
 
-Phase 2.8 can run a recorded investigation, preserve evidence and provider artifacts, recover from durable checkpoints, and publish a cited explanation with an evidence-strength band. It has not established real-case attribution accuracy. Its development suite is synthetic, its external gold runner validates manifests but does not yet execute frozen case bundles, and the sealed holdout and credentialed Live gates remain `NOT_RUN`.
+The recorded release candidate can run an investigation, preserve evidence and provider artifacts, recover from durable checkpoints, and publish a cited explanation with an evidence-strength band. It has not established real-case attribution accuracy. Its development suite is synthetic; frozen gold bundles execute through the production path, but the external development corpus, sealed holdout and credentialed Live gates remain `NOT_RUN`.
 
 Phase 3 turns that baseline into a reliable investigation agent for unseen ASX cases. The work centers on three things: a better causal reasoning contract, explicit memory boundaries, and an evaluation loop that runs the production path against adjudicated point-in-time evidence.
 
@@ -23,7 +23,7 @@ Given an ASX ticker and trading date, the product must:
 6. expose why it answered, abstained, or reported incomplete data;
 7. produce a trace that can be replayed and graded without hidden state.
 
-An unseen case is successful when the agent either identifies an acceptable driver with valid citations or abstains for a reason allowed by the case policy. A fluent unsupported answer is a failure.
+An unseen case is successful when the agent either identifies an acceptable driver with valid citations or abstains for a reason allowed by the case policy. Attribution rates include only published `EXPLAINED` cases; abstentions are a separate policy metric. A fluent unsupported answer is a failure.
 
 ## Architectural choice
 
@@ -51,7 +51,7 @@ This structure keeps the useful parts of an agent: hypothesis formation, targete
 
 The current service coordinates the full pipeline in one large unit. Phase 3 introduces an `InvestigationKernel` whose stages exchange typed values. The kernel owns ordering, budgets, checkpoints and terminal outcomes. It does not own provider implementations, document parsing, confidence rules or report presentation.
 
-The central state is an append-only `InvestigationLedger`. Each entry records the stage, input hashes, output hashes, policy versions, model configuration, validation result and timestamp. Checkpoint state remains the recovery format. The ledger is the audit format. Neither is used as model memory outside the current case version.
+The central state is an append-only `InvestigationLedger`. Each entry records the stage, input hashes, output hashes, policy versions, model configuration, validation result and timestamp. Checkpoint state remains the recovery format. The ledger is the audit format. Neither is used as model memory outside the current case version. Reproducibility gates compare the validated public decision, assertion/artifact IDs and policy trace, rather than raw sampled model wording retained in the ledger.
 
 The kernel runs a fixed set of causal mechanism tests:
 
@@ -82,7 +82,7 @@ An `EvidenceAssertion` contains:
 
 The first Gemini role may rank hypotheses only by referencing allowed assertion IDs. It may name an evidence gap, expected market signature and falsifier. It cannot write a publishable claim.
 
-The second role receives the original ranked batch and the final bounded packet. It may select an existing hypothesis, choose a supplied alternative, accept eligible targeted assertions, or reject all candidates. It cannot add a mechanism, change evidence timing or introduce an unknown ID.
+The second role receives an ID-only challenge view of the ranked batch and the final bounded packet. The first model's prose is untrusted and is never forwarded. It may select an existing hypothesis, choose a supplied alternative, accept eligible targeted assertions, or reject all candidates. It cannot add a mechanism, change evidence timing or introduce an unknown ID.
 
 The claim compiler is deterministic. It renders the chosen mechanism and exact supported assertions into the report schema. Model prose remains available in the internal trace for diagnosis, but it cannot become the text of a material claim. Numeric and entity checks run before publication. A failed compiler or validation rule produces `INSUFFICIENT_EVIDENCE`.
 
@@ -248,7 +248,7 @@ Phase 3 is one product phase with seven gated milestones:
 6. `P3.5 Confidence calibration and release policy`
 7. `P3.6 Live evidence completion and workbench release`
 
-Each milestone uses test-first development, an independent review, a separate commit and synchronized documentation. A milestone cannot claim completion while its external gate is `NOT_RUN`.
+Each milestone uses test-first development, an independent review, a separate commit and synchronized documentation. Implemented milestone code and external release approval are reported separately: a missing external gate is `NOT_RUN`, never a release pass.
 
 ## Scope control
 

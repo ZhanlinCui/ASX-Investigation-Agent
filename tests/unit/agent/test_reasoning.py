@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import date, datetime
 
 import pytest
 
@@ -11,10 +11,12 @@ from asx_investigator.agent.reasoning import (
 )
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, MarketMove
 from asx_investigator.evidence.context import build_evidence_packet
+from asx_investigator.investigation.assertions import build_assertions
+from asx_investigator.market.sessions import SYDNEY, resolve_session
 
 
 def evidence(role: EvidenceRole = EvidenceRole.CAUSAL_INPUT) -> EvidenceItem:
-    now = datetime.now(UTC)
+    now = datetime(2026, 8, 20, 8, 30, tzinfo=SYDNEY)
     return EvidenceItem(
         evidence_id="E1",
         source_name="Issuer IR",
@@ -40,16 +42,21 @@ def packet(role: EvidenceRole = EvidenceRole.CAUSAL_INPUT):
         market_relative_return_pct=7,
         is_unusual=True,
     )
-    return build_evidence_packet("BHP", move, [evidence(role)], [], [])
+    assertions = build_assertions(
+        [evidence(role)],
+        case_version_id="v1",
+        session=resolve_session(date(2026, 8, 20)),
+    )
+    return build_evidence_packet("BHP", move, assertions, [], [], case_version_id="v1")
 
 
-def proposal(evidence_id: str = "E1") -> HypothesisProposal:
+def proposal(assertion_id: str = "A1") -> HypothesisProposal:
     return HypothesisProposal(
         hypothesis_id="H1",
         rank=1,
         statement="Raised production guidance drove the move.",
         expected_signature="Positive opening gap and elevated volume.",
-        supporting_evidence_ids=[evidence_id],
+        supporting_assertion_ids=[assertion_id],
     )
 
 
@@ -75,11 +82,9 @@ def test_valid_reasoning_is_converted_to_claim_safe_hypotheses() -> None:
     assert result.validations[0].status == "PASS"
 
 
-def test_unknown_evidence_id_is_rejected() -> None:
-    with pytest.raises(ReasoningValidationError, match="unknown evidence"):
-        validate_reasoning(
-            HypothesisBatch(hypotheses=[proposal("MADE_UP")]), challenge(), packet()
-        )
+def test_unknown_assertion_id_is_rejected() -> None:
+    with pytest.raises(ReasoningValidationError, match="unknown assertion"):
+        validate_reasoning(HypothesisBatch(hypotheses=[proposal("MADE_UP")]), challenge(), packet())
 
 
 def test_unrelated_causal_statement_cannot_hide_behind_a_valid_evidence_id() -> None:
@@ -105,15 +110,13 @@ def test_public_hypothesis_text_is_rebuilt_from_evidence_not_model_prose() -> No
     )
 
     assert "takeover" not in result.leading.statement.lower()
-    assert result.leading.statement == (
-        "Guidance update: Production guidance increased before market open."
-    )
+    assert result.leading.statement == "Production guidance increased before market open."
 
 
 @pytest.mark.parametrize(
     ("role", "challenge_updates", "message"),
     [
-        (EvidenceRole.CONTEMPORANEOUS_REACTION, {}, "causal evidence"),
+        (EvidenceRole.CONTEMPORANEOUS_REACTION, {}, "non-causal assertion"),
         (EvidenceRole.CAUSAL_INPUT, {"timing_leakage": True}, "timing leakage"),
         (
             EvidenceRole.CAUSAL_INPUT,
@@ -131,3 +134,15 @@ def test_noncausal_or_leaky_reasoning_is_rejected(
             challenge(**challenge_updates),
             packet(role),
         )
+
+
+def test_duplicate_or_cross_case_assertion_support_is_rejected() -> None:
+    duplicate = proposal().model_copy(update={"supporting_assertion_ids": ["A1", "A1"]})
+    with pytest.raises(ReasoningValidationError, match="duplicate"):
+        validate_reasoning(HypothesisBatch(hypotheses=[duplicate]), challenge(), packet())
+
+    cross_case_packet = packet().model_copy(
+        update={"assertions": [packet().assertions[0].model_copy(update={"case_version_id": "v2"})]}
+    )
+    with pytest.raises(ReasoningValidationError, match="case-scoped"):
+        validate_reasoning(HypothesisBatch(hypotheses=[proposal()]), challenge(), cross_case_packet)

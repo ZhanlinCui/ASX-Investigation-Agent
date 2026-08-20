@@ -224,6 +224,7 @@ async def test_provider_calls_are_append_only_audit_records(
         status="SUCCESS",
         coverage="COMPLETE",
         retrieved_at=datetime.now(UTC),
+        as_of=datetime(2026, 8, 20, 8, 45, tzinfo=UTC),
         provenance={"symbol": "BHP.AU"},
         source_version="eod-v1",
     )
@@ -231,3 +232,4 @@ async def test_provider_calls_are_append_only_audit_records(
 
     assert calls[0]["provider"] == "EODHD"
     assert calls[0]["provenance"] == {"symbol": "BHP.AU"}
+    assert calls[0]["as_of"] == "2026-08-20T08:45:00+00:00"

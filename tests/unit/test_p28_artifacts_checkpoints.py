@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from asx_investigator.investigation.checkpoints import CheckpointEnvelope
+from asx_investigator.investigation.checkpoints import (
+    CHECKPOINT_POLICY_VERSION,
+    CHECKPOINT_SCHEMA_VERSION,
+    CheckpointEnvelope,
+    InvestigationState,
+)
 from asx_investigator.providers.capture import (
     canonical_json_bytes,
     capture_provider_payload,
@@ -75,6 +80,28 @@ def test_capture_types_are_immutable_and_alias_the_canonical_serializer() -> Non
     )
     with pytest.raises(Exception):
         checkpoint.stage = "different"
+
+
+def test_p3_assertion_checkpoints_use_a_new_contract_and_field_name() -> None:
+    state = InvestigationState(
+        version_id="version-1",
+        request_artifact_hash="a" * 64,
+        initial_input_artifact_hashes=["a" * 64],
+    )
+    checkpoint = CheckpointEnvelope(
+        version_id="version-1",
+        stage="resolve_instrument",
+        input_artifact_hashes=[],
+        output_artifact_hashes=[],
+        typed_state_json={},
+        policy_version=CHECKPOINT_POLICY_VERSION,
+    )
+
+    assert CHECKPOINT_SCHEMA_VERSION == "checkpoint-v2"
+    assert CHECKPOINT_POLICY_VERSION == "phase3-p3.6-v2"
+    assert checkpoint.schema_version == CHECKPOINT_SCHEMA_VERSION
+    assert "targeted_assertion_ids" in state.model_dump()
+    assert "targeted_evidence_ids" not in state.model_dump()
 
 
 @pytest.mark.asyncio
@@ -197,7 +224,7 @@ async def test_case_payloads_are_versioned_and_legacy_payloads_remain_readable(
 
     assert loaded.request_payload == {"ticker": "BHP"}
     assert {"request_schema_version", "report_schema_version"}.issubset(columns)
-    assert "artifact_id" in provider_call_columns
+    assert {"artifact_id", "as_of"}.issubset(provider_call_columns)
     assert json.loads(raw_request) == {
         "schema_version": "case-payload-v1",
         "payload": {"ticker": "CBA"},

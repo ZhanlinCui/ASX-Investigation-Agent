@@ -6,11 +6,11 @@ The product does not recommend trades or predict prices.
 
 ## Current release
 
-Phase 2 product implementation is complete in recorded mode. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Live completion remains gated by provider credentials and independently adjudicated point-in-time evaluation data.
+Phase 2 and Phase 3 implementation are delivered in recorded mode. Phase 3 provides assertion-bound reasoning, deterministic mechanism tests, an append-only ledger, point-in-time shared-memory isolation, frozen gold execution, ordinal calibration gates, and audited JSON, Markdown and workbench decisions. Phase 4 has added hash-bound Gemini usage and AUD-cost readiness for external evaluation. The product is not release-approved: the external development gold corpus, sealed holdout and credentialed Live gates remain OPEN and `NOT_RUN`. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Fresh recorded-release results are in `evals/results/phase3-evaluation.md`.
 
 Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
 
-See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap, `docs/phase-plans/phase-02-evidence-complete-live-investigation.md` for the current phase record, and `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md` for the proposed next-stage architecture.
+See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap, `docs/phase-plans/phase-03-causal-investigation-intelligence.md` for the active phase record, and `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md` for the approved architecture.
 
 ## Setup
 
@@ -33,6 +33,12 @@ Required before the Live gate can pass:
 - `EODHD_API_KEY`
 - `MARKETSTACK_API_KEY`
 - `TAVILY_API_KEY` where discovery is enabled
+
+Required before an external gold run can report measured model cost:
+
+- `GEMINI_PRICING_SCHEDULE_VERSION`
+- `GEMINI_INPUT_AUD_PER_MILLION_TOKENS`
+- `GEMINI_OUTPUT_AUD_PER_MILLION_TOKENS`
 
 Secrets are read by the backend only. They must not be committed or sent to the browser.
 
@@ -66,4 +72,5 @@ Use `evals/run_recorded_evals.py --write-results` only when intentionally refres
 - The 24 development cases are synthetic policy sentinels, not historical accuracy evidence.
 - The 12-case sealed holdout is `NOT_RUN` unless `ASX_EVAL_HOLDOUT_ROOT` is supplied.
 - The credentialed Live smoke gate is `NOT_RUN` in an unconfigured checkout.
+- External gold execution is `NOT_RUN` unless a hash-bound Gemini usage record and versioned AUD pricing schedule are available.
 - Recoverable runs resume from compatibility-checked durable stage checkpoints; incompatible checkpoints create an audited child version.

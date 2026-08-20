@@ -1,10 +1,11 @@
 # ASX Investigation Agent Master Development Plan
 
-**Last updated:** 20 August 2026  
-**Product stage:** Phase 2.8 recorded release candidate
+**Last updated:** 21 August 2026
+**Product stage:** Phase 3 implementation delivered in the recorded-only release candidate; external evaluation and Live release gates OPEN (`NOT_RUN`)
 
-**Authoritative phase plan:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
-**Next-stage design:** `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md`
+**Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
+**Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
+**Next activation plan:** `docs/phase-plans/phase-04-live-validation-activation.md`
 
 ## Product contract
 
@@ -57,9 +58,9 @@ Each milestone uses test-first implementation and an independent review checkpoi
 - A clean checkout runs recorded mode, the API, the UI build and the evaluation smoke suite.
 - Live completion requires externally supplied provider credentials. Without them, the release report states that the live gate was not run.
 
-## Proposed Phase 3: Causal Investigation Intelligence
+## Phase 3: Causal Investigation Intelligence
 
-Phase 3 will replace the current coarse hypothesis interface with assertion-bound hypotheses and a deterministic claim compiler. It will add an append-only investigation ledger, explicit shared-memory admission rules, production-path real-case evaluation and empirical calibration metadata for the existing confidence bands.
+Phase 3 replaces the current coarse hypothesis interface with assertion-bound hypotheses and a deterministic claim compiler. It adds an append-only investigation ledger, explicit shared-memory admission rules, production-path frozen-case evaluation and ordinal calibration metadata for the existing confidence bands.
 
 The proposed sequence is:
 
@@ -70,7 +71,7 @@ The proposed sequence is:
 5. publish calibration counts and release gates;
 6. close credentialed Live evidence and workbench gates.
 
-The design is not yet an implementation claim. Phase 2.8 remains the current recorded release candidate, and all missing external gates remain `NOT_RUN`.
+P3.0 through P3.6 are implemented in the recorded release candidate: the domain contract, typed investigation kernel, assertion-bound reasoning, non-causal shared-memory admission, frozen gold execution path, ordinal calibration gates, and audited workbench surfaces are all delivered in code. This is not a Phase 3 release approval. The development gold corpus, sealed holdout and credentialed Live validation gates remain OPEN and `NOT_RUN`. See `evals/results/phase3-evaluation.md` for the fresh release record.
 
 ## Architecture boundaries
 
@@ -107,9 +108,13 @@ Provider cache is not memory. It has a source, retrieval time, expiry and conten
 
 ## Evaluation policy
 
-Development, regression and sealed holdout cases are separated. Gold labels record the evidence cutoff, leading driver, acceptable alternatives, prohibited future evidence, mechanical flags, coverage expectation and whether abstention is acceptable.
+Development, regression and sealed holdout cases are separated. Gold labels record the evidence cutoff, leading driver, acceptable alternatives, prohibited future evidence, mechanical flags, coverage expectation and a typed `REQUIRED`, `ALLOWED` or `FORBIDDEN` abstention policy.
 
-Deterministic graders own time, session, citation, numeric and provider-failure checks. A model judge may help classify failures but cannot override a hard gate or a human label.
+Deterministic graders own time, session, citation, numeric and provider-failure checks. Top-1 and top-2 measure only published `EXPLAINED` outcomes; abstentions are evaluated by their separate policy gates. Gold replay compares validated decisions, assertion/artifact identities and policy trace, never private model prose. A model judge may help classify failures but cannot override a hard gate or a human label.
+
+## Phase 4: Live Validation Activation
+
+Phase 4 has implemented its model-usage and measured-AUD-cost readiness boundary. External execution remains blocked until provider credentials, a real 24-case development corpus and a separately controlled 12-case holdout are provided. It exercises the Phase 3 architecture and makes a measured release decision; it does not expand product scope. See `docs/phase-plans/phase-04-live-validation-activation.md`.
 
 ## Later phases
 

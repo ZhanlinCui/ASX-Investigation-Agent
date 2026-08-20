@@ -1,16 +1,57 @@
 from __future__ import annotations
 
 import math
+from decimal import Decimal, InvalidOperation
+from hashlib import sha256
 
-from asx_investigator.domain.models import ClaimType, EvidenceRole, InvestigationReport
+from asx_investigator.confidence.calibration import RELEASE_CHECK_NAMES, CalibrationRecord
+from asx_investigator.confidence.scoring import (
+    ConfidenceFeatures,
+    confidence_cap_maximum,
+    required_confidence_caps,
+)
+from asx_investigator.domain.models import (
+    ClaimType,
+    EvidenceRole,
+    InvestigationReport,
+)
 from asx_investigator.evaluation.models import (
     CaseEvaluation,
     EvalCaseManifest,
     GraderCheck,
+    ReleaseGateReport,
 )
-from asx_investigator.market.sessions import resolve_session
+from asx_investigator.investigation.assertions import normalized_hash
+from asx_investigator.investigation.claim_compiler import (
+    ClaimCompilationError,
+    compile_claim,
+)
+from asx_investigator.market.sessions import classify_event, resolve_session
 
 MATERIAL_CLAIMS = {ClaimType.CAUSE, ClaimType.CONTRIBUTOR, ClaimType.MECHANICAL}
+
+# Safety checks are zero-tolerance release evidence: absence means the corpus
+# has not demonstrated the property, rather than that it passed by default.
+_REQUIRED_ZERO_TOLERANCE_METRICS = (
+    "lookahead",
+    "session",
+    "citation",
+    "provider_semantics",
+    "reproducibility",
+    "confidence_caps",
+    "wrong_high",
+)
+_REQUIRED_ATTRIBUTION_METRICS = ("top_1", "top_2")
+_CONDITIONAL_BEHAVIORAL_METRICS = ("required_abstention", "false_abstention")
+_PARTIAL_DISCLOSURE_COVERAGE_STATUSES = {
+    "PARTIAL_DISCLOSURE_COVERAGE",
+    "SCOPED_REFINEMENT",
+}
+_REQUIRED_PROVIDER_CAPABILITIES = {
+    "market_data",
+    "issuer_disclosures",
+    "corporate_actions",
+}
 
 
 def grade_report(
@@ -18,16 +59,20 @@ def grade_report(
     report: InvestigationReport,
     *,
     latency_ms: int,
-    estimated_cost_aud: float,
+    estimated_cost_aud: Decimal | float | int,
+    ledger_reproducible: bool | None = None,
 ) -> CaseEvaluation:
+    try:
+        observed_cost_aud = Decimal(str(estimated_cost_aud))
+    except (InvalidOperation, ValueError) as error:
+        raise ValueError("estimated_cost_aud must be a finite AUD value") from error
+    if not observed_cost_aud.is_finite() or observed_cost_aud < 0:
+        raise ValueError("estimated_cost_aud must be a finite non-negative AUD value")
+
     evidence = {item.evidence_id: item for item in report.evidence}
     material = [claim for claim in report.claims if claim.claim_type in MATERIAL_CLAIMS]
-    cited_ids = {
-        evidence_id for claim in material for evidence_id in claim.supporting_evidence_ids
-    }
-    leading = next(
-        (item for item in report.hypotheses if str(item.status) == "LEADING"), None
-    )
+    cited_ids = {evidence_id for claim in material for evidence_id in claim.supporting_evidence_ids}
+    leading = next((item for item in report.hypotheses if str(item.status) == "LEADING"), None)
     leading_ids = set(leading.supporting_evidence_ids) if leading else set()
     leading_label = leading.driver_label if leading else None
     top_two_labels = {item.driver_label for item in report.hypotheses[:2]}
@@ -38,13 +83,46 @@ def grade_report(
         and all(evidence_id in evidence for evidence_id in claim.supporting_evidence_ids)
         for claim in material
     )
-    temporal_ok = not (cited_ids & blacklisted) and all(
-        evidence[evidence_id].role == EvidenceRole.CAUSAL_INPUT
-        and evidence[evidence_id].published_at <= manifest.evidence_cutoff
-        for evidence_id in cited_ids
-        if evidence_id in evidence
-    )
     expected_session = resolve_session(manifest.trade_date)
+    mechanical_cited_ids = {
+        evidence_id
+        for evidence_id in cited_ids
+        if evidence_id in evidence and evidence[evidence_id].evidence_kind == "CORPORATE_ACTION"
+    }
+    corporate_actions_diagnostic = next(
+        (
+            item
+            for item in report.provider_diagnostics
+            if item.operation == "corporate_actions"
+        ),
+        None,
+    )
+    mechanical_snapshot_ok = not mechanical_cited_ids or (
+        corporate_actions_diagnostic is not None
+        and corporate_actions_diagnostic.as_of is not None
+        and expected_session.market_close is not None
+        and corporate_actions_diagnostic.as_of <= expected_session.market_close
+        and all(
+            evidence[evidence_id].published_at <= corporate_actions_diagnostic.as_of
+            and classify_event(
+                evidence[evidence_id].published_at, expected_session
+            ).eligible_same_day_cause
+            for evidence_id in mechanical_cited_ids
+        )
+    )
+    temporal_ok = (
+        not (cited_ids & blacklisted)
+        and all(
+            evidence[evidence_id].role == EvidenceRole.CAUSAL_INPUT
+            and evidence[evidence_id].published_at <= manifest.evidence_cutoff
+            and classify_event(
+                evidence[evidence_id].published_at, expected_session
+            ).eligible_same_day_cause
+            for evidence_id in cited_ids
+            if evidence_id in evidence
+        )
+        and mechanical_snapshot_ok
+    )
     session_ok = (
         report.trade_date == manifest.trade_date
         and report.timezone_label == expected_session.timezone_label
@@ -83,18 +161,24 @@ def grade_report(
         abstention_ok = str(report.outcome) == "EXPLAINED"
     else:
         abstention_ok = True
-    top_one_ok = str(report.outcome) != "EXPLAINED" or (
-        (not required or bool(required & leading_ids))
-        and leading_label in manifest.driver_labels
+    answerable_attribution = str(report.outcome) == "EXPLAINED"
+    top_one_ok = answerable_attribution and (
+        (not required or bool(required & leading_ids)) and leading_label in manifest.driver_labels
     )
-    top_two_ok = bool(
-        top_two_labels
-        & set([*manifest.driver_labels, *manifest.acceptable_alternatives])
+    top_two_ok = answerable_attribution and bool(
+        top_two_labels & set([*manifest.driver_labels, *manifest.acceptable_alternatives])
     )
     provider_semantics_ok = not (
-        any(gap.capability == "market_data" for gap in report.coverage_gaps)
+        any(
+            gap.capability in _REQUIRED_PROVIDER_CAPABILITIES
+            for gap in report.coverage_gaps
+        )
         and str(report.outcome) == "NO_IDENTIFIABLE_CATALYST"
     )
+    assertion_integrity_ok, assertion_detail = _assertion_integrity(report, material)
+    claim_compilation_ok, compilation_detail = _claim_compilation(report, material)
+    calibration_ok, calibration_detail = _calibration_metadata(report)
+    confidence_caps_ok, confidence_caps_detail = _confidence_caps(report)
     checks = [
         GraderCheck(
             name="expected_outcome",
@@ -105,14 +189,18 @@ def grade_report(
             name="top_1_attribution",
             passed=top_one_ok,
             detail=(
-                f"label={leading_label}; leading={sorted(leading_ids)}; "
-                f"required={sorted(required)}"
+                f"answerable={answerable_attribution}; label={leading_label}; "
+                f"leading={sorted(leading_ids)}; required={sorted(required)}"
             ),
+            hard_gate=answerable_attribution,
         ),
         GraderCheck(
             name="top_2_attribution",
-            passed=top_two_ok if str(report.outcome) == "EXPLAINED" else True,
-            detail=f"top_two_labels={sorted(top_two_labels)}",
+            passed=top_two_ok,
+            detail=(
+                f"answerable={answerable_attribution}; top_two_labels={sorted(top_two_labels)}"
+            ),
+            hard_gate=answerable_attribution,
         ),
         GraderCheck(
             name="grounding",
@@ -122,7 +210,11 @@ def grade_report(
         GraderCheck(
             name="temporal_integrity",
             passed=temporal_ok,
-            detail=f"blacklisted_citations={sorted(cited_ids & blacklisted)}",
+            detail=(
+                f"blacklisted_citations={sorted(cited_ids & blacklisted)}; "
+                f"mechanical_citations={sorted(mechanical_cited_ids)}; "
+                f"mechanical_snapshot_ok={mechanical_snapshot_ok}"
+            ),
         ),
         GraderCheck(
             name="session_integrity",
@@ -150,10 +242,7 @@ def grade_report(
         GraderCheck(
             name="coverage",
             passed=report.coverage_status == manifest.coverage_expectation,
-            detail=(
-                f"observed={report.coverage_status}; "
-                f"expected={manifest.coverage_expectation}"
-            ),
+            detail=(f"observed={report.coverage_status}; expected={manifest.coverage_expectation}"),
         ),
         GraderCheck(
             name="provider_failure_semantics",
@@ -164,10 +253,41 @@ def grade_report(
             name="confidence_semantics",
             passed=(
                 report.confidence.band in {"LOW", "MEDIUM", "HIGH"}
-                and report.confidence.score_interpretation
-                == "INTERNAL_ORDINAL_NOT_PROBABILITY"
+                and report.confidence.score_interpretation == "INTERNAL_ORDINAL_NOT_PROBABILITY"
             ),
             detail=f"band={report.confidence.band}",
+        ),
+        GraderCheck(
+            name="confidence_caps",
+            passed=confidence_caps_ok,
+            detail=confidence_caps_detail,
+        ),
+        GraderCheck(
+            name="assertion_integrity",
+            passed=assertion_integrity_ok,
+            detail=assertion_detail,
+        ),
+        GraderCheck(
+            name="claim_compilation",
+            passed=claim_compilation_ok,
+            detail=compilation_detail,
+        ),
+        GraderCheck(
+            name="ledger_reproducibility",
+            passed=ledger_reproducible is not False,
+            detail=(
+                "Two production-path runs had matching normalized ledgers."
+                if ledger_reproducible is True
+                else "Not independently executed at this direct report-grading boundary."
+                if ledger_reproducible is None
+                else "Two production-path runs produced different normalized ledgers."
+            ),
+            hard_gate=ledger_reproducible is not None,
+        ),
+        GraderCheck(
+            name="calibration_metadata",
+            passed=calibration_ok,
+            detail=calibration_detail,
         ),
         GraderCheck(
             name="latency",
@@ -176,9 +296,9 @@ def grade_report(
         ),
         GraderCheck(
             name="cost",
-            passed=estimated_cost_aud <= manifest.max_cost_aud,
+            passed=observed_cost_aud <= manifest.max_cost_aud,
             detail=(
-                f"observed_aud={estimated_cost_aud:.6f}; "
+                f"observed_aud={observed_cost_aud:.6f}; "
                 f"max_aud={manifest.max_cost_aud:.6f}"
             ),
         ),
@@ -190,5 +310,362 @@ def grade_report(
         checks=checks,
         raw_counts={"passed": passed_count, "failed": len(checks) - passed_count},
         latency_ms=latency_ms,
-        estimated_cost_aud=estimated_cost_aud,
+        estimated_cost_aud=observed_cost_aud,
+        confidence_band=report.confidence.band,
+        abstention_policy=manifest.abstention_policy,
     )
+
+
+def evaluate_release_gates(
+    records: list[CalibrationRecord],
+    *,
+    external_corpus_executed: bool = True,
+) -> ReleaseGateReport:
+    """Apply deterministic Phase 3 release rules to explicit evaluation records.
+
+    A record is a validated external evaluation input. If that corpus did not
+    execute, this function deliberately returns ``NOT_RUN`` rather than using
+    local policy sentinels to manufacture a release pass.
+    """
+
+    if not external_corpus_executed or not records:
+        return ReleaseGateReport(status="NOT_RUN", raw_counts={}, denominators={}, proportions={})
+
+    safety_metrics = _REQUIRED_ZERO_TOLERANCE_METRICS[:-1]
+    behavioral_metrics = (*_REQUIRED_ATTRIBUTION_METRICS, *_CONDITIONAL_BEHAVIORAL_METRICS)
+    raw_counts: dict[str, dict[str, int]] = {}
+    denominators: dict[str, int] = {}
+    proportions: dict[str, float] = {}
+    failures: list[str] = []
+    for metric in (*safety_metrics, *behavioral_metrics):
+        eligible_records = records
+        if metric in _REQUIRED_ATTRIBUTION_METRICS:
+            # Attribution rates cover published causal explanations only. Any
+            # abstention, including an ALLOWED abstention, is assessed by the
+            # abstention gates and never contributes a pass or failure to top-1
+            # or top-2 attribution denominators.
+            eligible_records = [
+                record
+                for record in records
+                if not record.abstained
+            ]
+        values = [
+            record.checks[metric]
+            for record in eligible_records
+            if metric in record.checks
+        ]
+        raw_counts[metric] = {"passed": sum(values), "failed": len(values) - sum(values)}
+        denominators[metric] = len(values)
+        proportions[metric] = sum(values) / len(values) if values else 0.0
+
+    high_records = [record for record in records if record.confidence_band == "HIGH"]
+    wrong_high_failures = sum(record.material_error for record in high_records)
+    raw_counts["wrong_high"] = {
+        "passed": len(high_records) - wrong_high_failures,
+        "failed": wrong_high_failures,
+    }
+    denominators["wrong_high"] = len(high_records)
+    proportions["wrong_high"] = (
+        raw_counts["wrong_high"]["passed"] / len(high_records) if high_records else 0.0
+    )
+
+    if set(raw_counts) != RELEASE_CHECK_NAMES | {"wrong_high"}:
+        raise AssertionError("Release gate metrics do not match the approved contract")
+    for metric in _REQUIRED_ZERO_TOLERANCE_METRICS:
+        if denominators[metric] == 0:
+            failures.append(f"{metric} has no eligible observations")
+            continue
+        if raw_counts[metric]["failed"]:
+            failures.append(f"{metric} has {raw_counts[metric]['failed']} safety failure(s)")
+    for metric in _REQUIRED_ATTRIBUTION_METRICS:
+        if denominators[metric] == 0:
+            failures.append(f"{metric} has no eligible cases")
+    if proportions["top_1"] < 0.75 and denominators["top_1"]:
+        failures.append("top_1 is below the 75% threshold")
+    if proportions["top_2"] < 0.90 and denominators["top_2"]:
+        failures.append("top_2 is below the 90% threshold")
+    if denominators["required_abstention"] == 0:
+        failures.append("required_abstention has no eligible cases")
+    elif proportions["required_abstention"] < 1.0:
+        failures.append("required_abstention is below the 100% threshold")
+    false_abstention_rate = 1.0 - proportions["false_abstention"]
+    if false_abstention_rate > 0.20 and denominators["false_abstention"]:
+        failures.append("false_abstention exceeds the 20% threshold")
+    return ReleaseGateReport(
+        status="FAIL" if failures else "PASS",
+        raw_counts=raw_counts,
+        denominators=denominators,
+        proportions=proportions,
+        failures=failures,
+    )
+
+
+def normalized_ledger(report: InvestigationReport) -> dict[str, object]:
+    """Compare the deterministic, publishable result of two gold executions.
+
+    Ledger output hashes bind checkpoint state, including private model proposal
+    prose and challenge summaries. That is valuable audit material but cannot be
+    a reproducibility gate while model sampling remains non-zero. The release
+    comparison therefore projects only validated decisions, assertion/artifact
+    identities and the policy trace. Raw model text stays in the private ledger.
+    """
+
+    return {
+        "outcome": str(report.outcome),
+        "confidence": {
+            "band": report.confidence.band,
+            "selected_hypothesis_id": report.confidence.selected_hypothesis_id,
+            "rule_version": report.confidence.rule_version,
+            "applied_caps": sorted(report.confidence.applied_caps),
+        },
+        "coverage": {
+            "status": report.coverage_status,
+            "completeness_status": report.completeness.status,
+            "required_capabilities": sorted(report.completeness.required_capabilities),
+            "missing_capabilities": sorted(report.completeness.missing_capabilities),
+            "gaps": [
+                {
+                    "gap_id": gap.gap_id,
+                    "capability": gap.capability,
+                    "provider": gap.provider,
+                    "retryable": gap.retryable,
+                }
+                for gap in report.coverage_gaps
+            ],
+            "conflicts": [
+                {
+                    "conflict_id": conflict.conflict_id,
+                    "field": conflict.field,
+                    "primary_source": conflict.primary_source,
+                    "primary_value": conflict.primary_value,
+                    "secondary_source": conflict.secondary_source,
+                    "secondary_value": conflict.secondary_value,
+                    "resolution": conflict.resolution,
+                    "material": conflict.material,
+                }
+                for conflict in report.conflicts
+            ],
+        },
+        "claims": [
+            {
+                "claim_id": claim.claim_id,
+                "claim_type": str(claim.claim_type),
+                "supporting_evidence_ids": sorted(claim.supporting_evidence_ids),
+                "contradicting_evidence_ids": sorted(claim.contradicting_evidence_ids),
+            }
+            for claim in report.claims
+        ],
+        "hypotheses": [
+            {
+                "hypothesis_id": hypothesis.hypothesis_id,
+                "rank": hypothesis.rank,
+                "status": str(hypothesis.status),
+                "driver_label": hypothesis.driver_label,
+                "supporting_evidence_ids": sorted(hypothesis.supporting_evidence_ids),
+                "contradicting_evidence_ids": sorted(
+                    hypothesis.contradicting_evidence_ids
+                ),
+                "validation_ids": sorted(hypothesis.validation_ids),
+            }
+            for hypothesis in report.hypotheses
+        ],
+        "assertions": [
+            {
+                "assertion_id": assertion.assertion_id,
+                "evidence_id": assertion.evidence_id,
+                "span_hash": assertion.span_hash,
+                "artifact_hash": assertion.artifact_hash,
+                "causal_eligible": assertion.causal_eligible,
+                "mechanism_hint": str(assertion.mechanism_hint),
+            }
+            for assertion in report.assertions
+        ],
+        "mechanism_tests": [
+            {
+                "test_id": test.test_id,
+                "mechanism": str(test.mechanism),
+                "status": str(test.status),
+                "supporting_assertion_ids": sorted(test.supporting_assertion_ids),
+                "contradicting_assertion_ids": sorted(test.contradicting_assertion_ids),
+                "taxonomy_version": test.taxonomy_version,
+                "policy_version": test.policy_version,
+            }
+            for test in report.mechanism_tests
+        ],
+        "validation_results": [
+            {
+                "validation_id": validation.validation_id,
+                "kind": validation.kind,
+                "status": str(validation.status),
+                "evidence_ids": sorted(validation.evidence_ids),
+            }
+            for validation in report.validation_results
+        ],
+        "artifact_hashes": sorted(report.artifact_hashes),
+        "source_policy_version": report.source_policy_version,
+        "confidence_rule_version": report.confidence.rule_version,
+        "ledger_policy_trace": [
+            {
+                "sequence": entry.sequence,
+                "stage": entry.stage,
+                "status": entry.status,
+                "schema_version": entry.schema_version,
+                "policy_version": entry.policy_version,
+                "model_configuration": entry.model_configuration,
+                "validation_status": str(entry.validation_status)
+                if entry.validation_status is not None
+                else None,
+            }
+            for entry in report.ledger
+        ],
+    }
+
+
+def _assertion_integrity(report: InvestigationReport, material: list[object]) -> tuple[bool, str]:
+    evidence = {item.evidence_id: item for item in report.evidence}
+    assertions_by_evidence = {
+        item.evidence_id: item for item in report.assertions if item.causal_eligible
+    }
+    failures: list[str] = []
+    for claim in material:
+        supporting_ids = getattr(claim, "supporting_evidence_ids", [])
+        if not supporting_ids:
+            failures.append(f"{claim.claim_id}: no supporting evidence")
+            continue
+        for evidence_id in supporting_ids:
+            evidence_item = evidence.get(evidence_id)
+            assertion = assertions_by_evidence.get(evidence_id)
+            if evidence_item is None or assertion is None:
+                failures.append(f"{claim.claim_id}: missing eligible assertion for {evidence_id}")
+                continue
+            expected_span_hash = sha256(evidence_item.passage[:1_800].encode("utf-8")).hexdigest()
+            if (
+                assertion.span_hash != expected_span_hash
+                or assertion.exact_text != evidence_item.passage[:1_800]
+                or assertion.artifact_hash != normalized_hash(evidence_item.content_hash)
+            ):
+                failures.append(f"{claim.claim_id}: invalid assertion span for {evidence_id}")
+    return (
+        not failures,
+        "All material citations resolve to eligible, hash-bound assertions."
+        if not failures
+        else "; ".join(failures),
+    )
+
+
+def _claim_compilation(report: InvestigationReport, material: list[object]) -> tuple[bool, str]:
+    assertions_by_evidence = {
+        item.evidence_id: item for item in report.assertions if item.causal_eligible
+    }
+    for claim in material:
+        if getattr(claim, "claim_type", None) != ClaimType.CAUSE:
+            continue
+        supporting = [
+            assertions_by_evidence[evidence_id]
+            for evidence_id in claim.supporting_evidence_ids
+            if evidence_id in assertions_by_evidence
+        ]
+        if len(supporting) != len(claim.supporting_evidence_ids) or not supporting:
+            return False, f"{claim.claim_id}: citations cannot be compiled from assertions"
+        try:
+            compiled = compile_claim(
+                ticker=report.ticker,
+                mechanism=supporting[0].mechanism_hint,
+                assertions=supporting,
+            )
+        except ClaimCompilationError as error:
+            return False, f"{claim.claim_id}: {error}"
+        if (
+            compiled.text != claim.text
+            or compiled.supporting_evidence_ids != claim.supporting_evidence_ids
+        ):
+            return False, f"{claim.claim_id}: does not match deterministic compilation"
+    return True, "Material cause claims match deterministic assertion compilation."
+
+
+def _calibration_metadata(report: InvestigationReport) -> tuple[bool, str]:
+    try:
+        report.calibration_metadata.__class__.model_validate(
+            report.calibration_metadata.model_dump(mode="json")
+        )
+    except ValueError as error:
+        return False, f"Invalid calibration metadata: {error}"
+    return True, f"Calibration metadata status={report.calibration_metadata.status}."
+
+
+def _confidence_caps(report: InvestigationReport) -> tuple[bool, str]:
+    """Verify declared caps against caps recomputed from report state.
+
+    The assessment field is display metadata.  Release eligibility is derived
+    afresh from selected evidence, coverage, conflicts and market resolution
+    so a forged or omitted ``applied_caps`` value cannot conceal a cap.
+    """
+
+    evidence = {item.evidence_id: item for item in report.evidence}
+    selected = next(
+        (
+            item
+            for item in report.hypotheses
+            if item.hypothesis_id == report.confidence.selected_hypothesis_id
+        ),
+        None,
+    )
+    selected_support = [
+        evidence[evidence_id]
+        for evidence_id in (selected.supporting_evidence_ids if selected else [])
+        if evidence_id in evidence
+    ]
+    primary_authorities = {
+        "PRIMARY_ISSUER",
+        "APPROVED_OFFICIAL",
+        "USER_SUPPLIED_OFFICIAL",
+    }
+    session = resolve_session(report.trade_date)
+    needs_intraday_data = any(
+        classify_event(item.published_at, session).session_relationship == "DURING_SESSION"
+        for item in selected_support
+    )
+    partial_disclosure_coverage = (
+        str(report.outcome) != "INCOMPLETE_DATA"
+        and report.coverage_status in _PARTIAL_DISCLOSURE_COVERAGE_STATUSES
+    )
+    features = ConfidenceFeatures(
+        source_authority=0,
+        temporal_eligibility=0,
+        market_signature_fit=0,
+        quantitative_consistency=0,
+        independent_corroboration=0,
+        coverage_completeness=0,
+        has_primary_evidence=any(
+            item.authority in primary_authorities for item in selected_support
+        ),
+        disclosure_coverage_complete=not partial_disclosure_coverage,
+        has_material_conflict=any(conflict.material for conflict in report.conflicts),
+        timing_resolved=not needs_intraday_data,
+        needs_intraday_data=needs_intraday_data,
+        has_intraday_data=(
+            report.market_move is not None and report.market_move.resolution == "INTRADAY"
+        ),
+    )
+    required_caps = required_confidence_caps(features)
+    declared_caps = list(report.confidence.applied_caps)
+    try:
+        maximum = confidence_cap_maximum(required_caps)
+        confidence_cap_maximum(declared_caps)
+    except ValueError as error:
+        return False, str(error)
+    missing = sorted(set(required_caps) - set(declared_caps))
+    unexpected = sorted(set(declared_caps) - set(required_caps))
+    if missing or unexpected:
+        return (
+            False,
+            f"required_caps={required_caps}; declared_caps={declared_caps}; "
+            f"missing={missing}; unexpected={unexpected}",
+        )
+    if report.confidence.score > maximum:
+        return (
+            False,
+            f"score={report.confidence.score} exceeds required-cap maximum={maximum}; "
+            f"required_caps={required_caps}",
+        )
+    return True, f"required_caps={required_caps}; maximum={maximum}"

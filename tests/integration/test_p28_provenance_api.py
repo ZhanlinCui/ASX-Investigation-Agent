@@ -26,4 +26,5 @@ def test_report_exposes_checkpoint_lineage_without_artifact_content(tmp_path) ->
 
     assert body["checkpoint_lineage"][-1]["stage"] == "deterministic_validation"
     assert body["artifact_hashes"] == []
-    assert "artifact_content" not in body["provider_diagnostics"][0]
+    assert "input_artifact_hashes" not in body["checkpoint_lineage"][0]
+    assert "provider_diagnostics" not in body

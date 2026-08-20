@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import date, datetime
-from typing import Literal
+from decimal import Decimal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from asx_investigator.domain.models import InvestigationReport
+
+
+def _pricing_schedule_hash(
+    *,
+    version: str,
+    input_aud_per_million_tokens: Decimal,
+    output_aud_per_million_tokens: Decimal,
+) -> str:
+    payload = {
+        "schema_version": "aud-pricing-schedule-v1",
+        "version": version,
+        "input_aud_per_million_tokens": str(input_aud_per_million_tokens),
+        "output_aud_per_million_tokens": str(output_aud_per_million_tokens),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 class EvalCaseManifest(BaseModel):
@@ -23,7 +45,7 @@ class EvalCaseManifest(BaseModel):
     abstention_policy: Literal["REQUIRED", "ALLOWED", "FORBIDDEN"]
     expected_outcome: str
     max_latency_ms: int = Field(default=30_000, gt=0)
-    max_cost_aud: float = Field(default=1.0, ge=0)
+    max_cost_aud: Decimal = Field(default=Decimal("1.0"), ge=0)
 
 
 class EvalSuiteManifest(BaseModel):
@@ -45,7 +67,9 @@ class CaseEvaluation(BaseModel):
     checks: list[GraderCheck]
     raw_counts: dict[str, int]
     latency_ms: int
-    estimated_cost_aud: float
+    estimated_cost_aud: Decimal
+    confidence_band: Literal["LOW", "MEDIUM", "HIGH"] | None = None
+    abstention_policy: Literal["REQUIRED", "ALLOWED", "FORBIDDEN"] | None = None
 
 
 class EvaluationReport(BaseModel):
@@ -56,6 +80,38 @@ class EvaluationReport(BaseModel):
     proportions: dict[str, float]
     cases: list[CaseEvaluation] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+
+
+class ReleaseGateReport(BaseModel):
+    """A deterministic release decision with unambiguous denominators."""
+
+    status: Literal["PASS", "FAIL", "NOT_RUN"]
+    raw_counts: dict[str, dict[str, int]]
+    denominators: dict[str, int]
+    proportions: dict[str, float]
+    failures: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_raw_counts(self) -> ReleaseGateReport:
+        if self.status == "NOT_RUN":
+            if self.raw_counts or self.denominators or self.proportions:
+                raise ValueError("NOT_RUN release gates cannot contain evaluated counts")
+            return self
+        if set(self.raw_counts) != set(self.denominators) or set(self.raw_counts) != set(
+            self.proportions
+        ):
+            raise ValueError("release-gate counts, denominators and proportions must align")
+        for name, count in self.raw_counts.items():
+            if set(count) != {"passed", "failed"}:
+                raise ValueError("release-gate raw counts require passed and failed values")
+            if count["passed"] < 0 or count["failed"] < 0:
+                raise ValueError("release-gate raw counts cannot be negative")
+            if self.denominators[name] != count["passed"] + count["failed"]:
+                raise ValueError("release-gate denominator must match its raw counts")
+            expected = count["passed"] / self.denominators[name] if self.denominators[name] else 0.0
+            if self.proportions[name] != expected:
+                raise ValueError("release-gate proportion must match its raw counts")
+        return self
 
 
 class GoldCaseManifest(BaseModel):
@@ -72,7 +128,24 @@ class GoldCaseManifest(BaseModel):
     mechanical_expectation: str
     coverage_expectation: str
     citation_requirements: list[str] = Field(default_factory=list)
-    abstention_allowed: bool
+    abstention_policy: Literal["REQUIRED", "ALLOWED", "FORBIDDEN"]
+    expected_outcome: Literal[
+        "EXPLAINED",
+        "NO_IDENTIFIABLE_CATALYST",
+        "INSUFFICIENT_EVIDENCE",
+        "INCOMPLETE_DATA",
+    ] = "EXPLAINED"
+    max_latency_ms: int = Field(default=30_000, gt=0)
+    max_cost_aud: Decimal = Field(default=Decimal("1.0"), ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_abstention_boolean(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "abstention_allowed" in value:
+            raise ValueError(
+                "abstention_allowed is ambiguous; use typed abstention_policy"
+            )
+        return value
 
 
 class GoldCorpusLoadResult(BaseModel):
@@ -93,3 +166,178 @@ class GoldReleaseReport(BaseModel):
     raw_counts: dict[str, dict[str, int]]
     proportions: dict[str, float]
     case_failures: list[GoldCaseFailure] = Field(default_factory=list)
+
+
+class GoldExecutionCase(BaseModel):
+    """One production-path run of a frozen bundle.
+
+    `evaluation` is deliberately absent for a sealed holdout run. The report is
+    still available for an external grader to join with labels outside product
+    runtime.
+    """
+
+    case_id: str
+    report: InvestigationReport
+    evaluation: CaseEvaluation | None = None
+    latency_ms: int | None = Field(default=None, ge=0)
+    estimated_cost_aud: Decimal | None = Field(default=None, ge=0)
+    cost_artifact_hashes: list[str] = Field(default_factory=list)
+
+
+class AudPricingSchedule(BaseModel):
+    """Versioned, immutable AUD token pricing used for release-cost evidence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: Literal["aud-pricing-schedule-v1"] = "aud-pricing-schedule-v1"
+    version: str = Field(min_length=1, max_length=120)
+    input_aud_per_million_tokens: Decimal = Field(gt=0)
+    output_aud_per_million_tokens: Decimal = Field(gt=0)
+    artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def recorded(
+        cls,
+        *,
+        version: str,
+        input_aud_per_million_tokens: Decimal,
+        output_aud_per_million_tokens: Decimal,
+    ) -> AudPricingSchedule:
+        return cls(
+            version=version,
+            input_aud_per_million_tokens=input_aud_per_million_tokens,
+            output_aud_per_million_tokens=output_aud_per_million_tokens,
+            artifact_hash=_pricing_schedule_hash(
+                version=version,
+                input_aud_per_million_tokens=input_aud_per_million_tokens,
+                output_aud_per_million_tokens=output_aud_per_million_tokens,
+            ),
+        )
+
+    @model_validator(mode="after")
+    def validate_artifact_hash(self) -> AudPricingSchedule:
+        expected = _pricing_schedule_hash(
+            version=self.version,
+            input_aud_per_million_tokens=self.input_aud_per_million_tokens,
+            output_aud_per_million_tokens=self.output_aud_per_million_tokens,
+        )
+        if self.artifact_hash != expected:
+            raise ValueError("AUD pricing schedule hash does not match its contents")
+        return self
+
+    def cost_for(self, *, input_tokens: int, output_tokens: int) -> Decimal:
+        return (
+            self.input_aud_per_million_tokens * input_tokens
+            + self.output_aud_per_million_tokens * output_tokens
+        ) / Decimal("1000000")
+
+
+def _model_usage_cost_hash(
+    *,
+    model_configuration: dict[str, str],
+    pricing_schedule: AudPricingSchedule,
+    input_tokens: int,
+    output_tokens: int,
+    thinking_tokens: int,
+    measured_cost_aud: Decimal,
+) -> str:
+    """Hash all immutable inputs used to derive an AUD usage cost."""
+
+    payload = {
+        "schema_version": "model-usage-cost-v1",
+        "model_configuration": model_configuration,
+        "pricing_schedule": pricing_schedule.model_dump(mode="json"),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "thinking_tokens": thinking_tokens,
+        "measured_cost_aud": str(measured_cost_aud),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+class ModelUsageCostArtifact(BaseModel):
+    """An immutable, priced model-usage observation for release evaluation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: Literal["model-usage-cost-v1"] = "model-usage-cost-v1"
+    model_configuration: dict[str, str]
+    pricing_schedule: AudPricingSchedule
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    thinking_tokens: int = Field(default=0, ge=0)
+    measured_cost_aud: Decimal = Field(gt=0)
+    artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def recorded(
+        cls,
+        *,
+        model_configuration: dict[str, str],
+        pricing_schedule: AudPricingSchedule,
+        input_tokens: int,
+        output_tokens: int,
+        thinking_tokens: int = 0,
+    ) -> ModelUsageCostArtifact:
+        measured_cost_aud = pricing_schedule.cost_for(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens + thinking_tokens,
+        )
+        payload = {
+            "model_configuration": model_configuration,
+            "pricing_schedule": pricing_schedule,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "thinking_tokens": thinking_tokens,
+            "measured_cost_aud": measured_cost_aud,
+        }
+        return cls(
+            **payload,
+            artifact_hash=_model_usage_cost_hash(**payload),
+        )
+
+    @model_validator(mode="after")
+    def validate_artifact_hash(self) -> ModelUsageCostArtifact:
+        expected_cost = self.pricing_schedule.cost_for(
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens + self.thinking_tokens,
+        )
+        if self.measured_cost_aud != expected_cost:
+            raise ValueError(
+                "Model usage cost does not match its AUD pricing schedule and token counts"
+            )
+        expected = _model_usage_cost_hash(
+            model_configuration=self.model_configuration,
+            pricing_schedule=self.pricing_schedule,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            thinking_tokens=self.thinking_tokens,
+            measured_cost_aud=self.measured_cost_aud,
+        )
+        if self.artifact_hash != expected:
+            raise ValueError("Model usage cost artifact hash does not match its contents")
+        return self
+
+    @property
+    def pricing_schedule_version(self) -> str:
+        """Compatibility projection for audit consumers of prior artifacts."""
+
+        return self.pricing_schedule.version
+
+    @property
+    def pricing_schedule_hash(self) -> str:
+        """Compatibility projection for audit consumers of prior artifacts."""
+
+        return self.pricing_schedule.artifact_hash
+
+
+class GoldExecutionReport(BaseModel):
+    corpus: Literal["development", "holdout"]
+    corpus_version: str | None = None
+    status: Literal["PASS", "FAIL", "NOT_RUN"]
+    cases: list[GoldExecutionCase] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    reason: str | None = None
+    model_configuration: dict[str, str] = Field(default_factory=dict)

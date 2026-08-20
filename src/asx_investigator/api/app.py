@@ -23,6 +23,7 @@ from asx_investigator.domain.models import (
     EvidenceRole,
     InvestigationReport,
     InvestigationStatus,
+    IssuerReferenceFact,
     TraceReference,
 )
 from asx_investigator.evidence.ingestion import (
@@ -40,12 +41,15 @@ from asx_investigator.investigation.checkpoints import (
     InvestigationState,
 )
 from asx_investigator.investigation.service import InvestigationService
+from asx_investigator.market.sessions import SYDNEY, resolve_case_context_as_of
 from asx_investigator.providers.capture import canonical_json_bytes
 from asx_investigator.providers.live import LiveToolGateway
 from asx_investigator.providers.recorded import RecordedToolGateway
 from asx_investigator.report.markdown import render_markdown
+from asx_investigator.report.public import public_report_payload, public_timestamp
 from asx_investigator.settings import Settings
 from asx_investigator.storage.artifacts import ArtifactStore
+from asx_investigator.storage.memory import SharedMemoryRepository
 from asx_investigator.storage.repository import CaseVersionRecord, SQLiteCaseRepository
 
 
@@ -114,6 +118,51 @@ class SourceAccepted(BaseModel):
     retrieved_at: datetime
 
 
+def public_case_summary(record: CaseVersionRecord) -> dict[str, object]:
+    """Return archive/version metadata without raw request or report storage."""
+
+    payload: dict[str, object] = {
+        "case_id": record.case_id,
+        "version_id": record.version_id,
+        "version_number": record.version_number,
+        "parent_version_id": record.parent_version_id,
+        "ticker": record.ticker,
+        "trade_date": record.trade_date.isoformat(),
+        "mode": record.mode,
+        "status": record.status,
+        "outcome": record.outcome,
+        "active_stage": record.active_stage,
+    }
+    if record.report_payload is None:
+        return payload
+    try:
+        public_report = public_report_payload(
+            InvestigationReport.model_validate(record.report_payload)
+        )
+    except ValidationError:
+        return payload
+    payload.update(
+        {
+            "confidence_band": public_report["confidence"]["band"],
+            "evidence_count": len(public_report["evidence"]),
+            "completeness_status": public_report["completeness"]["status"],
+        }
+    )
+    return payload
+
+
+def public_event_payload(event: object) -> dict[str, object]:
+    """Project append-only events without publishing private event payloads."""
+
+    return {
+        "sequence": getattr(event, "sequence"),
+        "event_type": getattr(event, "event_type"),
+        "stage": getattr(event, "stage"),
+        "status": getattr(event, "status"),
+        "created_at": public_timestamp(getattr(event, "created_at")),
+    }
+
+
 class CaseManager:
     """Durable case runner with append-only public events."""
 
@@ -125,17 +174,22 @@ class CaseManager:
         repository: SQLiteCaseRepository,
         evidence_registry: SQLiteEvidenceRegistry,
         recorded_service: InvestigationService | None = None,
+        shared_memory: SharedMemoryRepository | None = None,
     ) -> None:
         self.service = service
         self.recorded_service = recorded_service or service
         self.repository = repository
         self.evidence_registry = evidence_registry
+        self.shared_memory = shared_memory or SharedMemoryRepository(
+            repository.database_path
+        )
         self.tasks: set[asyncio.Task[None]] = set()
         self._tasks_by_version: dict[str, asyncio.Task[None]] = {}
         self._case_locks: dict[str, asyncio.Lock] = {}
 
     async def start(self) -> None:
         await self.repository.initialize()
+        await self.shared_memory.initialize()
         for record in await self.repository.list_recoverable_versions():
             request = InvestigationRequest.model_validate(record.request_payload)
             try:
@@ -248,10 +302,29 @@ class CaseManager:
             canonical_json_bytes(request.model_dump(mode="json"))
         ).hexdigest()
 
-    async def _initial_input_hashes(self, request: InvestigationRequest) -> list[str]:
+    async def _initial_input_hashes(
+        self,
+        request: InvestigationRequest,
+        *,
+        context_facts: list[IssuerReferenceFact] | None = None,
+    ) -> list[str]:
         request_hash = self._request_artifact_hash(request)
         source_hashes = await self.repository.get_source_artifact_hashes(request.source_ids)
-        return sorted(set([request_hash, *source_hashes]))
+        memory_hashes = [fact.ledger_hash for fact in context_facts or []]
+        return sorted(set([request_hash, *source_hashes, *memory_hashes]))
+
+    async def _case_context_facts(
+        self, request: InvestigationRequest
+    ) -> tuple[list[IssuerReferenceFact], datetime]:
+        """Resolve immutable non-causal reference context at the sealed case cutoff."""
+
+        context_as_of = resolve_case_context_as_of(
+            request.trade_date, request.evidence_cutoff
+        )
+        facts = await self.shared_memory.list_context_facts(
+            request.ticker, as_of=context_as_of
+        )
+        return facts, context_as_of
 
     async def _compatible_checkpoint(
         self,
@@ -270,7 +343,11 @@ class CaseManager:
             return None, "SCHEMA_MISMATCH"
         try:
             state = InvestigationState.model_validate(candidate.typed_state_json)
-            expected_initial_inputs = await self._initial_input_hashes(request)
+            context_facts, _ = await self._case_context_facts(request)
+            expected_initial_inputs = await self._initial_input_hashes(
+                request,
+                context_facts=context_facts,
+            )
             if state.version_id != record.version_id:
                 return None, "VERSION_MISMATCH"
             if state.request_artifact_hash != self._request_artifact_hash(request):
@@ -378,6 +455,7 @@ class CaseManager:
                     event_payload,
                 )
 
+            context_facts, context_as_of = await self._case_context_facts(request)
             supplied_evidence = await self.repository.get_source_evidence(request.source_ids)
             for item in supplied_evidence:
                 await self.evidence_registry.register(record.version_id, item)
@@ -421,8 +499,13 @@ class CaseManager:
                 evidence_cutoff=request.evidence_cutoff,
                 version_id=record.version_id,
                 request_artifact_hash=self._request_artifact_hash(request),
-                input_artifact_hashes=await self._initial_input_hashes(request),
+                input_artifact_hashes=await self._initial_input_hashes(
+                    request,
+                    context_facts=context_facts,
+                ),
                 resume_checkpoint=resume_checkpoint,
+                context_facts=context_facts,
+                context_as_of=context_as_of,
             )
             report.case_id = record.case_id
             report.run_id = record.version_id
@@ -503,7 +586,7 @@ class CaseManager:
             events = await self.repository.list_events(record.version_id, sequence)
             for event in events:
                 sequence = event.sequence
-                yield event.model_dump(mode="json")
+                yield public_event_payload(event)
             record = await self.repository.get_version(record.version_id)
             if record.status in {"COMPLETED", "FAILED", "FAILED_RECOVERABLE"} and not events:
                 break
@@ -575,6 +658,7 @@ def create_app(
         allow_headers=["Content-Type", "Last-Event-ID"],
     )
     app.state.case_manager = manager
+    app.state.shared_memory = manager.shared_memory
     app.state.artifact_store = artifact_store
     app.state.source_ingestor = source_ingestor
 
@@ -594,7 +678,7 @@ def create_app(
     @app.get("/api/v1/investigations")
     async def list_investigations() -> dict[str, object]:
         records = await repository.list_cases()
-        return {"items": [record.model_dump(mode="json") for record in records]}
+        return {"items": [public_case_summary(record) for record in records]}
 
     @app.get("/api/v1/investigations/{case_id}/versions")
     async def list_versions(case_id: str) -> dict[str, object]:
@@ -602,7 +686,27 @@ def create_app(
             records = await repository.list_versions(case_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Investigation not found") from error
-        return {"items": [record.model_dump(mode="json") for record in records]}
+        return {"items": [public_case_summary(record) for record in records]}
+
+    @app.get("/api/v1/investigations/{case_id}/versions/{version_id}")
+    async def get_version_report(case_id: str, version_id: str) -> dict[str, object]:
+        """Return one immutable version through the normal public projection."""
+
+        try:
+            record = await repository.get_version(version_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404, detail="Investigation version not found"
+            ) from error
+        if record.case_id != case_id:
+            # Do not disclose that a version ID belongs to another case.
+            raise HTTPException(status_code=404, detail="Investigation version not found")
+        if record.report_payload is None:
+            return public_case_summary(record)
+        try:
+            return public_report_payload(InvestigationReport.model_validate(record.report_payload))
+        except ValidationError:
+            return public_case_summary(record)
 
     @app.post(
         "/api/v1/investigations/{case_id}/versions",
@@ -642,15 +746,8 @@ def create_app(
             report = InvestigationReport.model_validate(record.report_payload)
             if format == "markdown":
                 return Response(render_markdown(report), media_type="text/markdown")
-            return report.model_dump(mode="json")
-        return {
-            "case_id": record.case_id,
-            "version_id": record.version_id,
-            "version_number": record.version_number,
-            "status": record.status,
-            "active_stage": record.active_stage,
-            "error": record.error,
-        }
+            return public_report_payload(report)
+        return public_case_summary(record)
 
     @app.get("/api/v1/investigations/{case_id}/events")
     async def stream_events(
@@ -707,7 +804,20 @@ def create_app(
             authority="USER_SUPPLIED_OFFICIAL" if is_official else "USER_SUPPLIED",
             passages=[item.model_dump() for item in passages],
         )
-        return SourceAccepted.model_validate(record)
+        # Source records are stored in canonical UTC.  Project the response at the
+        # public API boundary so upload/fetch metadata obeys the same AEST/AEDT
+        # contract as reports and event streams.
+        return SourceAccepted.model_validate(
+            {
+                **record,
+                "published_at": datetime.fromisoformat(
+                    str(record["published_at"])
+                ).astimezone(SYDNEY),
+                "retrieved_at": datetime.fromisoformat(
+                    str(record["retrieved_at"])
+                ).astimezone(SYDNEY),
+            }
+        )
 
     @app.post(
         "/api/v1/sources/upload",
@@ -755,7 +865,7 @@ def create_app(
 
     @app.get("/api/v1/evidence/{evidence_id}/content")
     async def evidence_content(
-        evidence_id: str, version_id: str | None = None
+        evidence_id: str, version_id: str
     ) -> dict[str, object]:
         try:
             return await repository.find_evidence_content(

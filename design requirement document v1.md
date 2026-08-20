@@ -1,8 +1,8 @@
 # ASX Investigation Workbench
 ## Product Design Requirement
 
-**Version:** 2.2
-**Status:** Phase 2.8 product baseline; Phase 3 design proposed
+**Version:** 2.5
+**Status:** Phase 3 recorded-release candidate with Phase 4 measured-cost readiness; external evaluation and Live release gates OPEN (`NOT_RUN`)
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -51,15 +51,23 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - Complex evidence-graph authoring.
 - Mobile authoring.
 
-### Proposed for Phase 3
+### Delivered in Phase 3
 
 - Assertion-level evidence references between passages and hypotheses.
 - Visible causal mechanism tests and rejected-hypothesis reasons.
 - An append-only investigation ledger with policy and artifact lineage.
-- Calibration sample status for LOW, MEDIUM and HIGH bands.
-- Blind evaluation export without development or sealed labels.
+- Shared issuer reference facts admitted as bounded, point-in-time `CONTEXT_ONLY` context. Raw values are excluded from Gemini evidence packets and cannot support a hypothesis or claim; prior case conclusions and holdout labels are rejected.
+- Frozen, hash-verified gold bundles that run through the production investigation path. Blind holdout reports never load or display sealed labels.
+- Reviewed ordinal calibration metadata and release gates. Confidence remains a band, not a probability; missing external gold evaluation remains visibly `NOT_RUN`.
+- Compact audited decision surfaces for exact evidence assertions, mechanism tests, decision-ledger stage and artifact hashes, and ordinal calibration samples.
+- Controlled exact-passage links from an assertion to its frozen source content.
+- Visible `NOT_RUN` states for missing external development gold, sealed holdout and credentialed Live gates. A missing gate never appears as a passing release.
 
-These items are planned behavior. They are not part of the current recorded release until their milestone gates pass.
+### Phase 4 readiness
+
+- Gemini response token usage and a versioned AUD pricing schedule produce hash-bound, private evaluation-cost artifacts.
+- External evaluation refuses to call the model when pricing evidence is incomplete; a caller cannot substitute an estimate for observed cost.
+- Real development, sealed holdout and credentialed Live execution remain visibly `NOT_RUN` until their external inputs are supplied.
 
 ## Design direction
 

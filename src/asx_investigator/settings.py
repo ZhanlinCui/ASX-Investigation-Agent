@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,9 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3-flash-preview"
+    gemini_pricing_schedule_version: str | None = None
+    gemini_input_aud_per_million_tokens: Decimal | None = None
+    gemini_output_aud_per_million_tokens: Decimal | None = None
     eodhd_api_key: str | None = None
     marketstack_api_key: str | None = None
     tavily_api_key: str | None = None

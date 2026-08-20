@@ -464,6 +464,12 @@ class EODHDCorporateActionsProvider:
                 raise TypeError("Corporate action payload must be an object")
             rows = response.payload["data"]
             actions = [self._parse_action(row) for row in rows]
+            meta = response.payload.get("meta")
+            as_of = self._parse_timestamp(
+                meta.get("as_of") or meta.get("available_at")
+                if isinstance(meta, dict)
+                else None
+            )
         except (KeyError, TypeError, ValueError, ZeroDivisionError):
             return self._failure(
                 retrieved_at,
@@ -480,6 +486,7 @@ class EODHDCorporateActionsProvider:
             status=ProviderStatus.SUCCESS if actions else ProviderStatus.EMPTY,
             provider=self.name,
             retrieved_at=retrieved_at,
+            as_of=as_of,
             coverage="COMPLETE",
             data=actions,
             provenance=provenance,
@@ -502,13 +509,35 @@ class EODHDCorporateActionsProvider:
         value = row.get("value")
         action_type = "SPLIT" if split else str(row.get("type") or "CORPORATE_ACTION").upper()
         source_id = asx_extra.get("corporate_action_id")
+        announced_at = EODHDCorporateActionsProvider._parse_timestamp(
+            asx_extra.get("announced_at")
+            or asx_extra.get("announcement_at")
+            or asx_extra.get("available_at")
+            or row.get("announced_at")
+            or row.get("published_at")
+        )
         return CorporateAction(
             action_type=action_type,
             effective_date=date.fromisoformat(effective),
+            announced_at=announced_at,
             adjustment_factor=adjustment_factor,
             cash_amount_aud=float(value) if isinstance(value, int | float) else None,
             source_id=str(source_id or f"{row.get('code', 'ASX')}:{effective}:{action_type}"),
         )
+
+    @staticmethod
+    def _parse_timestamp(value: object) -> datetime | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Corporate action timestamp must be an ISO string")
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise ValueError("Corporate action timestamp must be ISO-8601") from error
+        if parsed.tzinfo is None:
+            raise ValueError("Corporate action timestamp must include a timezone")
+        return parsed
 
     def _failure(
         self,

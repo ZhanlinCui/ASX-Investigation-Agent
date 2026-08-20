@@ -1,8 +1,12 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
+import pytest
+from pydantic import ValidationError
 
+from asx_investigator.providers.market import CorporateAction
 from asx_investigator.providers.market_adapters import (
     EODHDCorporateActionsProvider,
     EODHDProvider,
@@ -10,6 +14,8 @@ from asx_investigator.providers.market_adapters import (
 )
 from asx_investigator.providers.outcomes import ProviderStatus
 from asx_investigator.storage.artifacts import ArtifactStore
+
+SYDNEY = ZoneInfo("Australia/Sydney")
 
 
 def response(payload: object, status_code: int = 200) -> httpx.Response:
@@ -122,11 +128,12 @@ async def test_asx_corporate_actions_use_point_in_time_official_feed_shape(
                 "exchange": "AU",
                 "_asx_extra": {
                     "effective_date": "2026-08-20",
+                    "announced_at": "2026-08-20T08:30:00+10:00",
                     "corporate_action_id": "CA-123",
                 },
             }
         ],
-        "meta": {"total": 1},
+        "meta": {"total": 1, "as_of": "2026-08-20T08:45:00+10:00"},
     }
     provider = EODHDCorporateActionsProvider(
         "secret",
@@ -141,5 +148,17 @@ async def test_asx_corporate_actions_use_point_in_time_official_feed_shape(
     assert result.status == ProviderStatus.SUCCESS
     assert result.data is not None
     assert result.data[0].effective_date == date(2026, 8, 20)
+    assert result.data[0].announced_at == datetime(2026, 8, 20, 8, 30, tzinfo=SYDNEY)
     assert result.data[0].adjustment_factor == 2
     assert result.data[0].source_id == "CA-123"
+    assert result.as_of == datetime(2026, 8, 20, 8, 45, tzinfo=SYDNEY)
+
+
+def test_corporate_action_rejects_naive_announcement_timestamp() -> None:
+    with pytest.raises(ValidationError, match="announced_at must be timezone-aware"):
+        CorporateAction(
+            action_type="SPLIT",
+            effective_date=date(2026, 8, 20),
+            announced_at=datetime(2026, 8, 20, 8, 30),
+            source_id="CA-123",
+        )

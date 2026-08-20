@@ -87,7 +87,7 @@ class ScenarioReasoner:
                     driver_label="ISSUER_DISCLOSURE",
                     statement="Raised production guidance drove the synthetic recorded move.",
                     expected_signature="Positive opening gap and elevated volume.",
-                    supporting_evidence_ids=["E1"],
+                    supporting_assertion_ids=["A1"],
                 )
             ],
             evidence_gap=gap,

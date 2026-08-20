@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from asx_investigator.domain.models import CoverageGap, SourceConflict
+from asx_investigator.domain.models import CoverageGap, SourceConflict, TradingSession
 from asx_investigator.market.forensics import DailyBar
+from asx_investigator.market.sessions import classify_event
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 
 
@@ -20,11 +21,52 @@ class MarketDataProvider(Protocol):
 
 
 class CorporateAction(BaseModel):
+    """An effective action plus the source timing needed to use it causally.
+
+    `announced_at` is the provider-supplied timestamp at which the official action
+    was announced or otherwise available. It is deliberately optional: an
+    effective date is useful context, but it is not proof that the market could
+    have known about the action before the investigated ASX session.
+    """
+
     action_type: str
     effective_date: date
+    announced_at: datetime | None = None
     adjustment_factor: float | None = None
     cash_amount_aud: float | None = None
     source_id: str
+
+    @model_validator(mode="after")
+    def validate_announcement_timestamp(self) -> CorporateAction:
+        if self.announced_at is not None and self.announced_at.tzinfo is None:
+            raise ValueError("announced_at must be timezone-aware")
+        return self
+
+
+def action_is_same_day_causal(
+    action: CorporateAction,
+    outcome: ProviderOutcome[list[CorporateAction]],
+    session: TradingSession,
+) -> bool:
+    """Return whether a corporate action has auditable same-session timing.
+
+    A result retrieved later is safe only when its source attests an immutable
+    point-in-time snapshot (`as_of`) that includes a real action announcement.
+    Neither an effective date nor the process retrieval time is used as a
+    substitute publication timestamp.
+    """
+
+    if (
+        action.announced_at is None
+        or outcome.as_of is None
+        or not session.is_trading_day
+        or session.market_close is None
+        or action.effective_date != session.trade_date
+    ):
+        return False
+    if action.announced_at > outcome.as_of or outcome.as_of > session.market_close:
+        return False
+    return classify_event(action.announced_at, session).eligible_same_day_cause
 
 
 class MarketContextSnapshot(BaseModel):
