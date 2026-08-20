@@ -1,4 +1,24 @@
 {
-  "schema_version": "gold-eval-v1",
-  "cases": []
+  "schema_version": "gold-frozen-v1",
+  "corpus_version": "external-gold-v1",
+  "cases": [
+    {
+      "case_id": "example-01",
+      "bundle_path": "example-01",
+      "ticker": "BHP",
+      "trade_date": "2026-08-20",
+      "timezone": "Australia/Sydney",
+      "evidence_cutoff": "2026-08-20T16:10:00+10:00",
+      "artifact_ids": ["replace-with-content-addressed-artifact-hash"],
+      "eligible_evidence_ids": ["E1"],
+      "future_evidence_ids": [],
+      "driver_labels": ["ISSUER_DISCLOSURE"],
+      "acceptable_alternatives": [],
+      "mechanical_expectation": "CHECKED_NO_EVENT",
+      "coverage_expectation": "COMPLETE",
+      "citation_requirements": ["E1"],
+      "abstention_allowed": false,
+      "expected_outcome": "EXPLAINED"
+    }
+  ]
 }

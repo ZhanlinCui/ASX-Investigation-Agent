@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import math
+from hashlib import sha256
 
-from asx_investigator.domain.models import ClaimType, EvidenceRole, InvestigationReport
+from asx_investigator.domain.models import (
+    ClaimType,
+    EvidenceRole,
+    InvestigationReport,
+)
 from asx_investigator.evaluation.models import (
     CaseEvaluation,
     EvalCaseManifest,
     GraderCheck,
+)
+from asx_investigator.investigation.assertions import normalized_hash
+from asx_investigator.investigation.claim_compiler import (
+    ClaimCompilationError,
+    compile_claim,
 )
 from asx_investigator.market.sessions import resolve_session
 
@@ -19,15 +29,12 @@ def grade_report(
     *,
     latency_ms: int,
     estimated_cost_aud: float,
+    ledger_reproducible: bool | None = None,
 ) -> CaseEvaluation:
     evidence = {item.evidence_id: item for item in report.evidence}
     material = [claim for claim in report.claims if claim.claim_type in MATERIAL_CLAIMS]
-    cited_ids = {
-        evidence_id for claim in material for evidence_id in claim.supporting_evidence_ids
-    }
-    leading = next(
-        (item for item in report.hypotheses if str(item.status) == "LEADING"), None
-    )
+    cited_ids = {evidence_id for claim in material for evidence_id in claim.supporting_evidence_ids}
+    leading = next((item for item in report.hypotheses if str(item.status) == "LEADING"), None)
     leading_ids = set(leading.supporting_evidence_ids) if leading else set()
     leading_label = leading.driver_label if leading else None
     top_two_labels = {item.driver_label for item in report.hypotheses[:2]}
@@ -84,17 +91,18 @@ def grade_report(
     else:
         abstention_ok = True
     top_one_ok = str(report.outcome) != "EXPLAINED" or (
-        (not required or bool(required & leading_ids))
-        and leading_label in manifest.driver_labels
+        (not required or bool(required & leading_ids)) and leading_label in manifest.driver_labels
     )
     top_two_ok = bool(
-        top_two_labels
-        & set([*manifest.driver_labels, *manifest.acceptable_alternatives])
+        top_two_labels & set([*manifest.driver_labels, *manifest.acceptable_alternatives])
     )
     provider_semantics_ok = not (
         any(gap.capability == "market_data" for gap in report.coverage_gaps)
         and str(report.outcome) == "NO_IDENTIFIABLE_CATALYST"
     )
+    assertion_integrity_ok, assertion_detail = _assertion_integrity(report, material)
+    claim_compilation_ok, compilation_detail = _claim_compilation(report, material)
+    calibration_ok, calibration_detail = _calibration_metadata(report)
     checks = [
         GraderCheck(
             name="expected_outcome",
@@ -105,8 +113,7 @@ def grade_report(
             name="top_1_attribution",
             passed=top_one_ok,
             detail=(
-                f"label={leading_label}; leading={sorted(leading_ids)}; "
-                f"required={sorted(required)}"
+                f"label={leading_label}; leading={sorted(leading_ids)}; required={sorted(required)}"
             ),
         ),
         GraderCheck(
@@ -150,10 +157,7 @@ def grade_report(
         GraderCheck(
             name="coverage",
             passed=report.coverage_status == manifest.coverage_expectation,
-            detail=(
-                f"observed={report.coverage_status}; "
-                f"expected={manifest.coverage_expectation}"
-            ),
+            detail=(f"observed={report.coverage_status}; expected={manifest.coverage_expectation}"),
         ),
         GraderCheck(
             name="provider_failure_semantics",
@@ -164,10 +168,36 @@ def grade_report(
             name="confidence_semantics",
             passed=(
                 report.confidence.band in {"LOW", "MEDIUM", "HIGH"}
-                and report.confidence.score_interpretation
-                == "INTERNAL_ORDINAL_NOT_PROBABILITY"
+                and report.confidence.score_interpretation == "INTERNAL_ORDINAL_NOT_PROBABILITY"
             ),
             detail=f"band={report.confidence.band}",
+        ),
+        GraderCheck(
+            name="assertion_integrity",
+            passed=assertion_integrity_ok,
+            detail=assertion_detail,
+        ),
+        GraderCheck(
+            name="claim_compilation",
+            passed=claim_compilation_ok,
+            detail=compilation_detail,
+        ),
+        GraderCheck(
+            name="ledger_reproducibility",
+            passed=ledger_reproducible is not False,
+            detail=(
+                "Two production-path runs had matching normalized ledgers."
+                if ledger_reproducible is True
+                else "Not independently executed at this direct report-grading boundary."
+                if ledger_reproducible is None
+                else "Two production-path runs produced different normalized ledgers."
+            ),
+            hard_gate=ledger_reproducible is not None,
+        ),
+        GraderCheck(
+            name="calibration_metadata",
+            passed=calibration_ok,
+            detail=calibration_detail,
         ),
         GraderCheck(
             name="latency",
@@ -177,10 +207,7 @@ def grade_report(
         GraderCheck(
             name="cost",
             passed=estimated_cost_aud <= manifest.max_cost_aud,
-            detail=(
-                f"observed_aud={estimated_cost_aud:.6f}; "
-                f"max_aud={manifest.max_cost_aud:.6f}"
-            ),
+            detail=(f"observed_aud={estimated_cost_aud:.6f}; max_aud={manifest.max_cost_aud:.6f}"),
         ),
     ]
     passed_count = sum(check.passed for check in checks)
@@ -192,3 +219,95 @@ def grade_report(
         latency_ms=latency_ms,
         estimated_cost_aud=estimated_cost_aud,
     )
+
+
+def normalized_ledger(report: InvestigationReport) -> list[dict[str, object]]:
+    """Compare replay-safe ledger fields without process-clock timestamps."""
+
+    return [
+        {
+            "sequence": entry.sequence,
+            "stage": entry.stage,
+            "status": entry.status,
+            "input_hashes": entry.input_hashes,
+            "output_hashes": entry.output_hashes,
+            "schema_version": entry.schema_version,
+            "policy_version": entry.policy_version,
+            "model_configuration": entry.model_configuration,
+            "validation_status": entry.validation_status,
+            "validation_summary": entry.validation_summary,
+        }
+        for entry in report.ledger
+    ]
+
+
+def _assertion_integrity(report: InvestigationReport, material: list[object]) -> tuple[bool, str]:
+    evidence = {item.evidence_id: item for item in report.evidence}
+    assertions_by_evidence = {
+        item.evidence_id: item for item in report.assertions if item.causal_eligible
+    }
+    failures: list[str] = []
+    for claim in material:
+        supporting_ids = getattr(claim, "supporting_evidence_ids", [])
+        if not supporting_ids:
+            failures.append(f"{claim.claim_id}: no supporting evidence")
+            continue
+        for evidence_id in supporting_ids:
+            evidence_item = evidence.get(evidence_id)
+            assertion = assertions_by_evidence.get(evidence_id)
+            if evidence_item is None or assertion is None:
+                failures.append(f"{claim.claim_id}: missing eligible assertion for {evidence_id}")
+                continue
+            expected_span_hash = sha256(evidence_item.passage[:1_800].encode("utf-8")).hexdigest()
+            if (
+                assertion.span_hash != expected_span_hash
+                or assertion.exact_text != evidence_item.passage[:1_800]
+                or assertion.artifact_hash != normalized_hash(evidence_item.content_hash)
+            ):
+                failures.append(f"{claim.claim_id}: invalid assertion span for {evidence_id}")
+    return (
+        not failures,
+        "All material citations resolve to eligible, hash-bound assertions."
+        if not failures
+        else "; ".join(failures),
+    )
+
+
+def _claim_compilation(report: InvestigationReport, material: list[object]) -> tuple[bool, str]:
+    assertions_by_evidence = {
+        item.evidence_id: item for item in report.assertions if item.causal_eligible
+    }
+    for claim in material:
+        if getattr(claim, "claim_type", None) != ClaimType.CAUSE:
+            continue
+        supporting = [
+            assertions_by_evidence[evidence_id]
+            for evidence_id in claim.supporting_evidence_ids
+            if evidence_id in assertions_by_evidence
+        ]
+        if len(supporting) != len(claim.supporting_evidence_ids) or not supporting:
+            return False, f"{claim.claim_id}: citations cannot be compiled from assertions"
+        try:
+            compiled = compile_claim(
+                ticker=report.ticker,
+                mechanism=supporting[0].mechanism_hint,
+                assertions=supporting,
+            )
+        except ClaimCompilationError as error:
+            return False, f"{claim.claim_id}: {error}"
+        if (
+            compiled.text != claim.text
+            or compiled.supporting_evidence_ids != claim.supporting_evidence_ids
+        ):
+            return False, f"{claim.claim_id}: does not match deterministic compilation"
+    return True, "Material cause claims match deterministic assertion compilation."
+
+
+def _calibration_metadata(report: InvestigationReport) -> tuple[bool, str]:
+    try:
+        report.calibration_metadata.__class__.model_validate(
+            report.calibration_metadata.model_dump(mode="json")
+        )
+    except ValueError as error:
+        return False, f"Invalid calibration metadata: {error}"
+    return True, f"Calibration metadata status={report.calibration_metadata.status}."

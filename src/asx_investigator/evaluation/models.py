@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from asx_investigator.domain.models import InvestigationReport
+
 
 class EvalCaseManifest(BaseModel):
     manifest_version: str = "eval-case-v1"
@@ -73,6 +75,12 @@ class GoldCaseManifest(BaseModel):
     coverage_expectation: str
     citation_requirements: list[str] = Field(default_factory=list)
     abstention_allowed: bool
+    expected_outcome: Literal[
+        "EXPLAINED",
+        "NO_IDENTIFIABLE_CATALYST",
+        "INSUFFICIENT_EVIDENCE",
+        "INCOMPLETE_DATA",
+    ] = "EXPLAINED"
 
 
 class GoldCorpusLoadResult(BaseModel):
@@ -93,3 +101,25 @@ class GoldReleaseReport(BaseModel):
     raw_counts: dict[str, dict[str, int]]
     proportions: dict[str, float]
     case_failures: list[GoldCaseFailure] = Field(default_factory=list)
+
+
+class GoldExecutionCase(BaseModel):
+    """One production-path run of a frozen bundle.
+
+    `evaluation` is deliberately absent for a sealed holdout run. The report is
+    still available for an external grader to join with labels outside product
+    runtime.
+    """
+
+    case_id: str
+    report: InvestigationReport
+    evaluation: CaseEvaluation | None = None
+
+
+class GoldExecutionReport(BaseModel):
+    corpus: Literal["development", "holdout"]
+    corpus_version: str | None = None
+    status: Literal["PASS", "FAIL", "NOT_RUN"]
+    cases: list[GoldExecutionCase] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    reason: str | None = None
