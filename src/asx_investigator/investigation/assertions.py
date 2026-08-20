@@ -48,17 +48,16 @@ def normalized_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def classify_mechanism_hint(item: EvidenceItem) -> CausalMechanism:
-    """Classify only explicit source facts; no price-pattern inference is permitted."""
+def classify_mechanism_hint(
+    *, exact_text: str, source_authority: str, source_name: str
+) -> CausalMechanism:
+    """Classify a bounded assertion span and trusted source metadata only."""
 
-    text = f"{item.title} {item.passage}".lower()
-    if item.evidence_id.startswith("M") or any(term in text for term in _MECHANICAL_TERMS):
+    text = exact_text.lower()
+    if any(term in text for term in _MECHANICAL_TERMS):
         return CausalMechanism.MECHANICAL
-    if (
-        "issuer" in item.authority.lower()
-        or "issuer" in item.source_name.lower()
-        or "investor relations" in item.source_name.lower()
-    ):
+    source_metadata = f"{source_authority} {source_name}".lower()
+    if "issuer" in source_metadata or "investor relations" in source_metadata:
         return CausalMechanism.ISSUER_EVENT
     if any(term in text for term in _CONTEXT_TERMS):
         return CausalMechanism.MACRO_MARKET
@@ -111,7 +110,11 @@ def build_assertions(
                 causal_eligible=(
                     item.role == EvidenceRole.CAUSAL_INPUT and timing.eligible_same_day_cause
                 ),
-                mechanism_hint=classify_mechanism_hint(item),
+                mechanism_hint=classify_mechanism_hint(
+                    exact_text=exact_text,
+                    source_authority=item.authority,
+                    source_name=item.source_name,
+                ),
                 normalized_entities=extract_entities(exact_text),
                 normalized_values=extract_numeric_values(exact_text),
             )

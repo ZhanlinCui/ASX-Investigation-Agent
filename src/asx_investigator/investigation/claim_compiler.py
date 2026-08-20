@@ -43,6 +43,8 @@ def compile_claim(
         raise ClaimCompilationError("Unknown mechanisms cannot produce a causal claim")
     eligible = _validate_assertion_set(assertions)
     lead = eligible[0]
+    if lead.mechanism_hint != mechanism:
+        raise ClaimCompilationError("Claim mechanism is not bound to its leading assertion")
     supporting_evidence_ids = list(dict.fromkeys(item.evidence_id for item in eligible))
     return Claim(
         claim_id="C1",

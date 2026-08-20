@@ -112,6 +112,18 @@ def _evidence_ids(assertions: list[EvidenceAssertion]) -> list[str]:
     return list(dict.fromkeys(item.evidence_id for item in assertions))
 
 
+def _driver_label(assertions: list[EvidenceAssertion]) -> str:
+    """Derive a public label from assertion metadata, never model prose."""
+
+    if not assertions:
+        return "UNCLASSIFIED"
+    labels = {
+        "ISSUER_EVENT": "ISSUER_DISCLOSURE",
+    }
+    mechanism = assertions[0].mechanism_hint.value
+    return labels.get(mechanism, mechanism)
+
+
 def validate_reasoning(
     batch: HypothesisBatch,
     challenge: ChallengeResult,
@@ -218,9 +230,9 @@ def validate_reasoning(
                     if proposal.hypothesis_id == selected_id
                     else HypothesisStatus.ALTERNATIVE
                 ),
-                driver_label=proposal.driver_label,
+                driver_label=_driver_label(cited),
                 statement=safe_statement,
-                expected_signature=proposal.expected_signature,
+                expected_signature=None,
                 supporting_evidence_ids=_evidence_ids(cited),
                 contradicting_evidence_ids=_evidence_ids(contradictions),
                 validation_ids=["V-EVIDENCE", "V-CHALLENGE"],
@@ -242,7 +254,7 @@ def validate_reasoning(
             validation_id="V-CHALLENGE",
             kind="ADVERSARIAL_CHALLENGE",
             status=ValidationStatus.PASS,
-            summary=challenge.summary,
+            summary="The adversarial challenge completed without a validation failure.",
             evidence_ids=selected_evidence_ids,
         ),
     ]

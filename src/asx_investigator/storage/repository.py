@@ -10,7 +10,10 @@ import aiosqlite
 from pydantic import BaseModel, Field
 
 from asx_investigator.domain.models import CheckpointSummary, EvidenceItem, EvidenceRole
-from asx_investigator.investigation.checkpoints import CheckpointEnvelope
+from asx_investigator.investigation.checkpoints import (
+    CHECKPOINT_SCHEMA_VERSION,
+    CheckpointEnvelope,
+)
 
 
 class CaseVersionImmutableError(RuntimeError):
@@ -885,7 +888,7 @@ class SQLiteCaseRepository:
         *,
         policy_version: str,
         input_artifact_hashes: list[str],
-        schema_version: str = "checkpoint-v1",
+        schema_version: str = CHECKPOINT_SCHEMA_VERSION,
     ) -> CheckpointEnvelope | None:
         normalized_inputs = sorted(input_artifact_hashes)
         async with aiosqlite.connect(self.database_path) as connection:

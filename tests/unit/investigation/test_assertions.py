@@ -6,7 +6,10 @@ from asx_investigator.domain.models import (
     EvidenceRole,
     ValidationStatus,
 )
-from asx_investigator.investigation.assertions import build_assertions
+from asx_investigator.investigation.assertions import (
+    MAX_ASSERTION_CHARACTERS,
+    build_assertions,
+)
 from asx_investigator.investigation.mechanisms import run_mechanism_tests
 from asx_investigator.market.sessions import SYDNEY, resolve_session
 
@@ -55,3 +58,24 @@ def test_mechanism_tests_only_classify_factual_assertions() -> None:
     assert tests[0].mechanism == CausalMechanism.MECHANICAL
     assert tests[0].status == ValidationStatus.PASS
     assert tests[0].supporting_assertion_ids == ["A1"]
+
+
+def test_mechanism_hint_ignores_adversarial_title_and_truncated_text() -> None:
+    bounded_text = "BHP supplied this statement. "
+    bounded_text += "x" * (MAX_ASSERTION_CHARACTERS - len(bounded_text))
+    evidence = issuer_evidence("E1", bounded_text + " A dividend is effective today.").model_copy(
+        update={
+            "authority": "DISCOVERY_ONLY",
+            "source_name": "Discovery feed",
+            "title": "Dividend declaration and macro outlook",
+        }
+    )
+
+    assertion = build_assertions(
+        [evidence],
+        case_version_id="v1",
+        session=resolve_session(date(2026, 8, 20)),
+    )[0]
+
+    assert assertion.exact_text == bounded_text
+    assert assertion.mechanism_hint == CausalMechanism.UNKNOWN

@@ -53,3 +53,16 @@ def test_claim_compiler_rejects_invalid_or_noncausal_assertions() -> None:
             mechanism=CausalMechanism.ISSUER_EVENT,
             assertions=[invalid],
         )
+
+
+def test_claim_compiler_rejects_mechanism_not_bound_to_leading_assertion() -> None:
+    unsupported = eligible_assertion("A1", "BHP raised guidance.").model_copy(
+        update={"mechanism_hint": CausalMechanism.UNKNOWN}
+    )
+
+    with pytest.raises(ClaimCompilationError, match="mechanism"):
+        compile_claim(
+            ticker="BHP",
+            mechanism=CausalMechanism.ISSUER_EVENT,
+            assertions=[unsupported],
+        )

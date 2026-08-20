@@ -10,7 +10,11 @@ import aiosqlite
 import pytest
 
 from asx_investigator.api.app import InvestigationRequest, create_app
-from asx_investigator.investigation.checkpoints import InvestigationState
+from asx_investigator.investigation.checkpoints import (
+    CHECKPOINT_POLICY_VERSION,
+    CHECKPOINT_SCHEMA_VERSION,
+    InvestigationState,
+)
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers.market import MarketDataResult
 from asx_investigator.providers.recorded import RecordedToolGateway
@@ -252,6 +256,41 @@ async def test_incompatible_checkpoint_creates_child_retry(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_phase2_checkpoint_is_branched_before_any_resume(tmp_path: Path) -> None:
+    repository = SQLiteCaseRepository(tmp_path / "cases.db")
+    tools = CountingTools(fail_once_at="get_corporate_actions")
+    app = create_app(InvestigationService(tools), repository=repository)
+
+    async with app.router.lifespan_context(app):
+        version = await app.state.case_manager.create(recorded_request())
+        await drain_manager(app.state.case_manager)
+        latest = await repository.latest_checkpoint(version.version_id)
+        assert latest is not None
+        legacy_state = dict(latest.typed_state_json)
+        legacy_state.pop("ledger_schema_version")
+        legacy_state.pop("ledger")
+        legacy_state.pop("ledger_stage_output_hashes")
+        async with aiosqlite.connect(repository.database_path) as connection:
+            await connection.execute(
+                """UPDATE checkpoints SET policy_version = 'phase2-v1',
+                schema_version = 'checkpoint-v1', typed_state_json = ?
+                WHERE version_id = ? AND stage = 'acquire_market_data'""",
+                (json.dumps(legacy_state), version.version_id),
+            )
+            await connection.commit()
+
+        child = await app.state.case_manager.retry(version.version_id)
+        await drain_manager(app.state.case_manager)
+
+    parent_events = await repository.list_events(version.version_id)
+    assert child.parent_version_id == version.version_id
+    assert child.version_id != version.version_id
+    assert (await repository.get_version(version.version_id)).status == "FAILED"
+    assert (await repository.get_version(child.version_id)).status == "COMPLETED"
+    assert not any(event.status == "RESUMED" for event in parent_events)
+
+
+@pytest.mark.asyncio
 async def test_checkpoint_content_mismatch_creates_child_retry(tmp_path: Path) -> None:
     repository = SQLiteCaseRepository(tmp_path / "cases.db")
     tools = CountingTools(fail_once_at="get_corporate_actions")
@@ -437,10 +476,12 @@ async def test_resume_after_documents_skips_all_prior_artifact_bearing_providers
         before = dict(tools.calls)
         latest = await repository.latest_checkpoint(version.version_id)
         assert latest is not None
+        assert latest.schema_version == CHECKPOINT_SCHEMA_VERSION
+        assert latest.policy_version == CHECKPOINT_POLICY_VERSION
         checkpoint_state = InvestigationState.model_validate(latest.typed_state_json)
         market = await repository.latest_compatible_checkpoint(
             version.version_id,
-            policy_version="phase2-v1",
+            policy_version=CHECKPOINT_POLICY_VERSION,
             input_artifact_hashes=[checkpoint_state.request_artifact_hash],
         )
         assert market is not None
@@ -608,7 +649,7 @@ async def test_late_checkpoint_cross_checks_every_prior_artifact_output(
     ("field", "value", "message"),
     [
         ("policy_version", "phase2-v2", "policy"),
-        ("schema_version", "checkpoint-v2", "schema"),
+        ("schema_version", "checkpoint-v3", "schema"),
     ],
 )
 @pytest.mark.asyncio

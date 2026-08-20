@@ -792,7 +792,7 @@ class InvestigationKernel:
                 targeted_evidence_ids = {
                     candidate.evidence_id for candidate in targeted_candidates
                 }
-                checkpoint_state.targeted_evidence_ids = [
+                checkpoint_state.targeted_assertion_ids = [
                     item.assertion_id
                     for item in packet.assertions
                     if item.evidence_id in targeted_evidence_ids
@@ -811,7 +811,7 @@ class InvestigationKernel:
             batch,
             challenge,
             packet,
-            targeted_assertion_ids=set(checkpoint_state.targeted_evidence_ids),
+            targeted_assertion_ids=set(checkpoint_state.targeted_assertion_ids),
         )
         if not checkpoint_state.has_completed("deterministic_validation"):
             await completed("deterministic_validation")

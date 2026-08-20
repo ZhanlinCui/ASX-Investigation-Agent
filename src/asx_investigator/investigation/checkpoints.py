@@ -27,8 +27,8 @@ from asx_investigator.market.forensics import DailyBar
 from asx_investigator.providers.market import CorporateAction, MarketDataResult
 from asx_investigator.providers.outcomes import ProviderOutcome
 
-CHECKPOINT_POLICY_VERSION = "phase2-v1"
-CHECKPOINT_SCHEMA_VERSION = "checkpoint-v1"
+CHECKPOINT_POLICY_VERSION = "phase3-p3.2-v1"
+CHECKPOINT_SCHEMA_VERSION = "checkpoint-v2"
 
 DURABLE_STAGE_ORDER = (
     "resolve_instrument",
@@ -117,7 +117,7 @@ class InvestigationState(BaseModel):
     conflicts: list[SourceConflict] | None = None
     packet: EvidencePacket | None = None
     hypothesis_batch: HypothesisBatch | None = None
-    targeted_evidence_ids: list[str] = Field(default_factory=list)
+    targeted_assertion_ids: list[str] = Field(default_factory=list)
     challenge: ChallengeResult | None = None
     validations: list[ValidationResult] = Field(default_factory=list)
     ledger: list[LedgerEntry] = Field(default_factory=list)
@@ -331,7 +331,7 @@ class InvestigationState(BaseModel):
             "targeted_retrieval": {
                 "evidence": self.evidence,
                 "packet": self.packet,
-                "targeted_evidence_ids": self.targeted_evidence_ids,
+                "targeted_assertion_ids": self.targeted_assertion_ids,
             },
             "challenge_leading_hypothesis": self.challenge,
             "deterministic_validation": self.validations,
@@ -356,7 +356,7 @@ class CheckpointEnvelope(BaseModel):
     input_artifact_hashes: list[str]
     output_artifact_hashes: list[str]
     typed_state_json: dict[str, object]
-    schema_version: str = "checkpoint-v1"
+    schema_version: str = CHECKPOINT_SCHEMA_VERSION
     policy_version: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     model_config = ConfigDict(frozen=True)
