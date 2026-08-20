@@ -41,7 +41,7 @@ Behavior gates report raw numerators and denominators: top-1 at least 75 percent
 
 The completed workbench presents exact evidence assertions, mechanism tests, append-only ledger metadata and calibration sample status. Assertion links use the controlled exact-passage endpoint. The public report projection excludes case-version internals from assertions, model configuration and validation prose from ledger entries, and calibration proportions. It preserves established report fields for API compatibility.
 
-Fresh local verification on 21 August 2026 passed: 243 Python tests, Ruff, the 24-case synthetic recorded suite, four frontend tests and the production frontend build. The external development gold corpus, sealed holdout and credentialed Live smoke were not supplied to this checkout, so each remains `NOT_RUN`. The detailed command record is `evals/results/phase3-evaluation.md`.
+Fresh local verification on 21 August 2026 passed: 244 Python tests, Ruff, the 24-case synthetic recorded suite, five frontend tests and the production frontend build. The external development gold corpus, sealed holdout and credentialed Live smoke were not supplied to this checkout, so each remains `NOT_RUN`. The detailed command record is `evals/results/phase3-evaluation.md`.
 
 ## Documentation rule
 

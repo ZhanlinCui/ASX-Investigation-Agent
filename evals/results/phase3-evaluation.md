@@ -6,10 +6,10 @@ Recorded on 21 August 2026 from the Phase 3 release worktree. This record distin
 
 | Check | Status | Result |
 |---|---|---|
-| `../../.venv/bin/python -m pytest -q` | PASS | 243 passed; 6 third-party deprecation warnings |
+| `../../.venv/bin/python -m pytest -q` | PASS | 244 passed; 6 third-party deprecation warnings |
 | `../../.venv/bin/ruff check .` | PASS | All checks passed |
 | `git diff --check` | PASS | No whitespace errors |
-| `cd web && pnpm test -- --run` | PASS | 4 tests passed |
+| `cd web && pnpm test -- --run` | PASS | 5 tests passed |
 | `cd web && pnpm build` | PASS | TypeScript and Vite production build passed |
 
 ## Local synthetic and recorded evaluation
