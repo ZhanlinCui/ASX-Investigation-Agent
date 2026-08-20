@@ -1,7 +1,7 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 20 August 2026  
-**Product stage:** Phase 3.0 contracts complete; Phase 3.1 kernel next; Phase 2.8 recorded release candidate
+**Product stage:** Phase 3.0 contracts complete; Phase 3.1 kernel and ledger in progress; Phase 2.8 recorded release candidate
 
 **Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
 **Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
@@ -71,7 +71,7 @@ The proposed sequence is:
 5. publish calibration counts and release gates;
 6. close credentialed Live evidence and workbench gates.
 
-P3.0 completed the domain contract and documentation baseline. P3.1 will implement the typed investigation kernel and append-only decision ledger. Phase 2.8 remains the current runnable recorded release candidate, and all missing external gates remain `NOT_RUN`.
+P3.0 completed the domain contract and documentation baseline. P3.1 is implementing the typed investigation kernel and append-only decision ledger. Phase 2.8 remains the current runnable recorded release candidate, and all missing external gates remain `NOT_RUN`.
 
 ## Architecture boundaries
 

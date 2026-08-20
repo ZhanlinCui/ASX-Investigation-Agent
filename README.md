@@ -6,7 +6,7 @@ The product does not recommend trades or predict prices.
 
 ## Current release
 
-Phase 2 product implementation is complete in recorded mode. Phase 3 P3.0 completed the assertion, mechanism, ledger and calibration contracts; the typed kernel is next. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Live completion remains gated by provider credentials and independently adjudicated point-in-time evaluation data.
+Phase 2 product implementation is complete in recorded mode. Phase 3 P3.0 completed the assertion, mechanism, ledger and calibration contracts; P3.1 kernel and ledger implementation is in progress. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Live completion remains gated by provider credentials and independently adjudicated point-in-time evaluation data.
 
 Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
 

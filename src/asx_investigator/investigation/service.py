@@ -47,6 +47,7 @@ from asx_investigator.investigation.checkpoints import (
     InvestigationState,
     MarketDataCheckpoint,
 )
+from asx_investigator.investigation.ledger import LedgerBuilder
 from asx_investigator.market.forensics import calculate_market_move
 from asx_investigator.market.sessions import classify_event, resolve_session
 from asx_investigator.providers.errors import DataProviderUnavailable
@@ -57,8 +58,8 @@ StageObserver = Callable[[str, str, dict[str, object]], Awaitable[None]]
 StageCompletion = Callable[[str], Awaitable[None]]
 
 
-class InvestigationService:
-    """Evidence-first state machine whose model output is never directly publishable."""
+class _InvestigationPipeline:
+    """Internal, typed pipeline executed by the public investigation kernel."""
 
     def __init__(
         self,
@@ -68,7 +69,7 @@ class InvestigationService:
         self.tools = tools
         self.reasoner = reasoner
 
-    async def investigate(
+    async def run(
         self,
         ticker: str,
         trade_date: str | date,
@@ -129,9 +130,39 @@ class InvestigationService:
             )
             trace = []
 
+        model_configuration = (
+            getattr(
+                self.reasoner,
+                "model_configuration",
+                {"provider": "INJECTED_REASONER", "structured_calls_max": "2"},
+            )
+            if self.reasoner
+            else {"provider": "RECORDED_DETERMINISTIC", "structured_calls_max": "0"}
+        )
+        ledger = LedgerBuilder(state.ledger)
+        if resume_checkpoint is not None:
+            ledger.append(
+                stage=resume_checkpoint.stage,
+                status="RESUMED",
+                input_hashes=state.input_hashes(resume_checkpoint.stage),
+                output_hashes=state.output_hashes(resume_checkpoint.stage),
+                policy_version=CHECKPOINT_POLICY_VERSION,
+                model_configuration=model_configuration,
+            )
+            state.ledger = ledger.entries()
+
         async def completed(stage: str) -> None:
             trace.append({"node": stage, "status": "COMPLETED"})
             state.complete(stage)
+            ledger.append(
+                stage=stage,
+                status="COMPLETED",
+                input_hashes=state.input_hashes(stage),
+                output_hashes=state.output_hashes(stage),
+                policy_version=CHECKPOINT_POLICY_VERSION,
+                model_configuration=model_configuration,
+            )
+            state.ledger = ledger.entries()
             state.trace = list(trace)
             payload: dict[str, object] = {}
             if version_id is not None:
@@ -164,7 +195,7 @@ class InvestigationService:
         session = state.session
         if not session.is_trading_day:
             return self._non_trading_report(
-                normalized_ticker, requested_date, session, instrument, trace
+                normalized_ticker, requested_date, session, instrument, trace, ledger.entries()
             )
 
         if not state.has_completed("acquire_market_data"):
@@ -184,6 +215,7 @@ class InvestigationService:
                     str(error),
                     trace,
                     error.outcomes,
+                    ledger.entries(),
                 )
             benchmark_return = await self.tools.get_benchmark_return(requested_date)
             state.market_data = MarketDataCheckpoint(
@@ -576,16 +608,9 @@ class InvestigationService:
                 if refinement_limited
                 else "PARTIAL_DISCLOSURE_COVERAGE"
             ),
-            model_configuration=(
-                getattr(
-                    self.reasoner,
-                    "model_configuration",
-                    {"provider": "INJECTED_REASONER", "structured_calls_max": "2"},
-                )
-                if self.reasoner
-                else {"provider": "RECORDED_DETERMINISTIC", "structured_calls_max": "0"}
-            ),
+            model_configuration=model_configuration,
             provider_diagnostics=provider_diagnostics,
+            ledger=ledger.entries(),
             trace=trace,
         )
 
@@ -789,6 +814,7 @@ class InvestigationService:
         session: TradingSession,
         instrument,
         trace: list[dict[str, str]],
+        ledger,
     ) -> InvestigationReport:
         return InvestigationReport(
             case_id=str(uuid4()),
@@ -812,6 +838,7 @@ class InvestigationService:
                 missing_capabilities=["asx_trading_session"],
             ),
             coverage_status="NOT_A_TRADING_DAY",
+            ledger=ledger,
             trace=trace,
         )
 
@@ -824,6 +851,7 @@ class InvestigationService:
         reason: str,
         trace: list[dict[str, str]],
         outcomes: list[ProviderOutcome[object]],
+        ledger,
     ) -> InvestigationReport:
         gap = CoverageGap(
             gap_id="MARKET_DATA_UNAVAILABLE",
@@ -873,5 +901,57 @@ class InvestigationService:
             coverage_gaps=[gap],
             coverage_status="INCOMPLETE_MARKET_DATA",
             provider_diagnostics=provider_diagnostics,
+            ledger=ledger,
             trace=trace,
+        )
+
+
+class InvestigationService:
+    """Compatibility facade for the typed investigation kernel."""
+
+    def __init__(
+        self,
+        tools: InvestigationTools,
+        reasoner: InvestigationReasoner | None = None,
+    ) -> None:
+        from asx_investigator.investigation.kernel import InvestigationKernel
+
+        self.kernel = InvestigationKernel(tools, reasoner)
+
+    @property
+    def tools(self) -> InvestigationTools:
+        return self.kernel.tools
+
+    @property
+    def reasoner(self) -> InvestigationReasoner | None:
+        return self.kernel.reasoner
+
+    async def investigate(
+        self,
+        ticker: str,
+        trade_date: str | date,
+        mode: str = "LIVE",
+        on_stage: StageObserver | None = None,
+        supplied_evidence: list[EvidenceItem] | None = None,
+        primary_only: bool = False,
+        excluded_evidence_ids: list[str] | None = None,
+        evidence_cutoff: datetime | None = None,
+        version_id: str | None = None,
+        request_artifact_hash: str | None = None,
+        input_artifact_hashes: list[str] | None = None,
+        resume_checkpoint: CheckpointEnvelope | None = None,
+    ) -> InvestigationReport:
+        return await self.kernel.run(
+            ticker,
+            trade_date,
+            mode,
+            on_stage,
+            supplied_evidence,
+            primary_only,
+            excluded_evidence_ids,
+            evidence_cutoff,
+            version_id,
+            request_artifact_hash,
+            input_artifact_hashes,
+            resume_checkpoint,
         )

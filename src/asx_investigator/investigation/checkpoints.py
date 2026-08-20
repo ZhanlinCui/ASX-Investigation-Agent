@@ -10,6 +10,7 @@ from asx_investigator.domain.models import (
     CoverageGap,
     EvidenceItem,
     InstrumentIdentity,
+    LedgerEntry,
     MarketMove,
     SourceConflict,
     TradingSession,
@@ -90,6 +91,7 @@ class InvestigationState(BaseModel):
     targeted_evidence_ids: list[str] = Field(default_factory=list)
     challenge: ChallengeResult | None = None
     validations: list[ValidationResult] = Field(default_factory=list)
+    ledger: list[LedgerEntry] = Field(default_factory=list)
     trace: list[dict[str, str]] = Field(default_factory=list)
 
     @model_validator(mode="after")
