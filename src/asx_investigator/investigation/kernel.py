@@ -22,6 +22,7 @@ from asx_investigator.confidence.scoring import (
     score_confidence,
 )
 from asx_investigator.domain.models import (
+    CausalMechanism,
     Claim,
     ClaimType,
     CompletenessAssessment,
@@ -40,6 +41,7 @@ from asx_investigator.domain.models import (
 )
 from asx_investigator.evidence.context import EvidencePacket, build_evidence_packet
 from asx_investigator.evidence.validation import validate_claims
+from asx_investigator.investigation.assertions import build_assertions
 from asx_investigator.investigation.checkpoints import (
     CHECKPOINT_POLICY_VERSION,
     CHECKPOINT_SCHEMA_VERSION,
@@ -48,7 +50,12 @@ from asx_investigator.investigation.checkpoints import (
     InvestigationState,
     MarketDataCheckpoint,
 )
+from asx_investigator.investigation.claim_compiler import (
+    ClaimCompilationError,
+    compile_claim,
+)
 from asx_investigator.investigation.ledger import LEDGER_SCHEMA_VERSION, LedgerBuilder
+from asx_investigator.investigation.mechanisms import run_mechanism_tests
 from asx_investigator.market.forensics import calculate_market_move
 from asx_investigator.market.sessions import classify_event, resolve_session
 from asx_investigator.providers.errors import DataProviderUnavailable
@@ -398,12 +405,18 @@ class InvestigationKernel:
         if not state.has_completed("assemble_evidence_packet"):
             state.packet = None
             await self._stage(trace, on_stage, "assemble_evidence_packet", "RUNNING")
+            assertions = build_assertions(
+                evidence,
+                case_version_id=state.version_id,
+                session=session,
+            )
             state.packet = build_evidence_packet(
                 normalized_ticker,
                 market_move,
-                evidence,
+                assertions,
                 coverage_gaps,
                 market_data.conflicts,
+                case_version_id=state.version_id,
             )
             await completed("assemble_evidence_packet")
         packet = state.packet
@@ -442,6 +455,11 @@ class InvestigationKernel:
         if validated:
             validations.extend(validated.validations)
 
+        assertions = list(packet.assertions)
+        mechanism_tests = run_mechanism_tests(
+            assertions,
+            observed_at=session.market_open,
+        )
         causal = [item for item in evidence if item.role == EvidenceRole.CAUSAL_INPUT]
         selected = validated.leading if validated else None
         evidence_registry = {item.evidence_id: item for item in evidence}
@@ -455,20 +473,49 @@ class InvestigationKernel:
             else []
         )
         if selected:
-            evidence_title = selected_support[0].title
-            claim = Claim(
-                claim_id="C1",
-                claim_type=ClaimType.CAUSE,
-                text=(
-                    f"{evidence_title} is the leading evidence-backed explanation for the "
-                    f"{normalized_ticker} move."
-                ),
-                supporting_evidence_ids=selected.supporting_evidence_ids,
-                contradicting_evidence_ids=selected.contradicting_evidence_ids,
+            assertion_by_id = {item.assertion_id: item for item in assertions}
+            selected_assertions = [
+                assertion_by_id[assertion_id]
+                for assertion_id in validated.leading_assertion_ids
+                if assertion_id in assertion_by_id
+            ]
+            mechanism = (
+                selected_assertions[0].mechanism_hint
+                if selected_assertions
+                else CausalMechanism.UNKNOWN
             )
-            outcome = InvestigationOutcome.EXPLAINED
-            primary = PrimaryAssessment(primary_claim_id="C1", summary=claim.text)
+            mechanism_verified = any(
+                test.mechanism == mechanism
+                and test.status == ValidationStatus.PASS
+                and selected_assertions[0].assertion_id in test.supporting_assertion_ids
+                for test in mechanism_tests
+            ) if selected_assertions else False
+            try:
+                if not mechanism_verified:
+                    raise ClaimCompilationError("Selected assertion has no passing mechanism test")
+                claim = compile_claim(
+                    ticker=normalized_ticker,
+                    mechanism=mechanism,
+                    assertions=selected_assertions,
+                    model_statement=None,
+                )
+            except ClaimCompilationError as error:
+                reasoning_error = str(error)
+                validations.append(
+                    ValidationResult(
+                        validation_id="V-CLAIM-COMPILATION",
+                        kind="ASSERTION_CLAIM_COMPILATION",
+                        status=ValidationStatus.FAIL,
+                        summary=reasoning_error,
+                    )
+                )
+                selected = None
+            else:
+                outcome = InvestigationOutcome.EXPLAINED
+                primary = PrimaryAssessment(primary_claim_id="C1", summary=claim.text)
         else:
+            claim = None
+        if not selected:
             summary = (
                 "No contemporaneous primary evidence was found after complete disclosure "
                 "coverage checks."
@@ -606,6 +653,8 @@ class InvestigationKernel:
             assessment=primary,
             claims=[claim],
             evidence=evidence,
+            assertions=assertions,
+            mechanism_tests=mechanism_tests,
             confidence=confidence,
             claim_support=claim_support,
             completeness=CompletenessAssessment(
@@ -655,7 +704,7 @@ class InvestigationKernel:
         checkpoint_state: InvestigationState,
         completed: StageCompletion,
     ) -> tuple[ValidatedReasoning | None, list[EvidenceItem], EvidencePacket]:
-        causal = [item for item in evidence if item.role == EvidenceRole.CAUSAL_INPUT]
+        causal = [item for item in packet.assertions if item.causal_eligible]
         if self.reasoner is None:
             if mode.upper() != "RECORDED" or not causal:
                 return None, evidence, packet
@@ -667,17 +716,14 @@ class InvestigationKernel:
                             rank=1,
                             driver_label=(
                                 "MECHANICAL"
-                                if causal[0].evidence_id.startswith("M")
+                                if causal[0].mechanism_hint == CausalMechanism.MECHANICAL
                                 else "ISSUER_DISCLOSURE"
                             ),
-                            statement=(
-                                f"{causal[0].title} is the leading explanation for the recorded "
-                                f"{ticker} move."
-                            ),
+                            statement=causal[0].exact_text,
                             expected_signature=(
                                 "Directionally consistent unusual price and volume."
                             ),
-                            supporting_evidence_ids=[causal[0].evidence_id],
+                            supporting_assertion_ids=[causal[0].assertion_id],
                         )
                     ]
                 )
@@ -728,15 +774,28 @@ class InvestigationKernel:
                     excluded_evidence_ids=excluded_evidence_ids,
                     evidence_cutoff=evidence_cutoff,
                 )
+                assertions = build_assertions(
+                    evidence,
+                    case_version_id=packet.case_version_id,
+                    session=session,
+                )
                 packet = build_evidence_packet(
-                    ticker, market_move, evidence, coverage_gaps, conflicts
+                    ticker,
+                    market_move,
+                    assertions,
+                    coverage_gaps,
+                    conflicts,
+                    case_version_id=packet.case_version_id,
                 )
                 checkpoint_state.evidence = list(evidence)
                 checkpoint_state.packet = packet
+                targeted_evidence_ids = {
+                    candidate.evidence_id for candidate in targeted_candidates
+                }
                 checkpoint_state.targeted_evidence_ids = [
-                    item.evidence_id
-                    for item in targeted_candidates
-                    if item.evidence_id in packet.allowed_evidence_ids
+                    item.assertion_id
+                    for item in packet.assertions
+                    if item.evidence_id in targeted_evidence_ids
                 ]
                 await completed("targeted_retrieval")
 
@@ -752,7 +811,7 @@ class InvestigationKernel:
             batch,
             challenge,
             packet,
-            targeted_evidence_ids=set(checkpoint_state.targeted_evidence_ids),
+            targeted_assertion_ids=set(checkpoint_state.targeted_evidence_ids),
         )
         if not checkpoint_state.has_completed("deterministic_validation"):
             await completed("deterministic_validation")

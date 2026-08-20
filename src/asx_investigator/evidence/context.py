@@ -1,47 +1,53 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from asx_investigator.domain.models import (
     CoverageGap,
-    EvidenceItem,
+    EvidenceAssertion,
     EvidenceRole,
     MarketMove,
     SourceConflict,
 )
 
 MAX_EVIDENCE_ITEMS = 12
-MAX_PASSAGE_CHARACTERS = 1_800
-
-
-class EvidenceSnippet(BaseModel):
-    evidence_id: str
-    source_name: str
-    authority: str
-    role: EvidenceRole
-    published_at: str
-    title: str
-    passage: str
-    locator: str | None = None
 
 
 class EvidencePacket(BaseModel):
+    """The bounded assertion-only payload available to the two model calls."""
+
     ticker: str
+    case_version_id: str
     market_facts: dict[str, float | bool | None]
-    snippets: list[EvidenceSnippet] = Field(max_length=MAX_EVIDENCE_ITEMS)
-    allowed_evidence_ids: list[str]
+    assertions: list[EvidenceAssertion] = Field(max_length=MAX_EVIDENCE_ITEMS)
+    allowed_assertion_ids: list[str]
     coverage_gaps: list[CoverageGap]
     conflicts: list[SourceConflict]
     document_content_is_untrusted: bool = True
+
+    @model_validator(mode="after")
+    def validate_case_bound_assertions(self) -> EvidencePacket:
+        assertion_ids = [item.assertion_id for item in self.assertions]
+        if len(set(assertion_ids)) != len(assertion_ids):
+            raise ValueError("Evidence packet contains duplicate assertion IDs")
+        if any(item.case_version_id != self.case_version_id for item in self.assertions):
+            raise ValueError("Evidence packet assertions must be case-scoped")
+        if self.allowed_assertion_ids != assertion_ids:
+            raise ValueError("Evidence packet allowed assertion IDs must match its assertions")
+        return self
 
 
 def build_evidence_packet(
     ticker: str,
     move: MarketMove,
-    evidence: list[EvidenceItem],
+    assertions: list[EvidenceAssertion],
     coverage_gaps: list[CoverageGap],
     conflicts: list[SourceConflict],
+    *,
+    case_version_id: str,
 ) -> EvidencePacket:
+    """Bound case-scoped assertions using the established deterministic role ordering."""
+
     role_rank = {
         EvidenceRole.CAUSAL_INPUT: 0,
         EvidenceRole.CONTEMPORANEOUS_REACTION: 1,
@@ -49,24 +55,13 @@ def build_evidence_packet(
         EvidenceRole.EXCLUDED: 3,
     }
     selected = sorted(
-        enumerate(evidence),
+        enumerate(assertions),
         key=lambda pair: (role_rank[pair[1].role], pair[0]),
     )[:MAX_EVIDENCE_ITEMS]
-    snippets = [
-        EvidenceSnippet(
-            evidence_id=item.evidence_id,
-            source_name=item.source_name,
-            authority=item.authority,
-            role=item.role,
-            published_at=item.published_at.isoformat(),
-            title=item.title,
-            passage=item.passage[:MAX_PASSAGE_CHARACTERS],
-            locator=item.locator,
-        )
-        for _, item in selected
-    ]
+    packet_assertions = [item for _, item in selected]
     return EvidencePacket(
         ticker=ticker,
+        case_version_id=case_version_id,
         market_facts={
             "close_return_pct": move.close_return_pct,
             "open_gap_pct": move.open_gap_pct,
@@ -77,8 +72,8 @@ def build_evidence_packet(
             "market_relative_return_pct": move.market_relative_return_pct,
             "is_unusual": move.is_unusual,
         },
-        snippets=snippets,
-        allowed_evidence_ids=[item.evidence_id for item in snippets],
+        assertions=packet_assertions,
+        allowed_assertion_ids=[item.assertion_id for item in packet_assertions],
         coverage_gaps=coverage_gaps,
         conflicts=conflicts,
     )

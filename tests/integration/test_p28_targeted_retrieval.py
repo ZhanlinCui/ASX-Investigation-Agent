@@ -53,7 +53,7 @@ class TargetAcceptingReasoner:
                     rank=1,
                     statement="Raised production guidance drove the recorded move.",
                     expected_signature="Positive gap and elevated volume.",
-                    supporting_evidence_ids=["E1"],
+                    supporting_assertion_ids=["A1"],
                 )
             ],
             evidence_gap=EvidenceGapRequest(
@@ -70,7 +70,7 @@ class TargetAcceptingReasoner:
             timing_leakage=False,
             unsupported_assumptions=[],
             summary="The targeted issuer release confirms the supplied announcement.",
-            accepted_targeted_evidence_ids=["T1"],
+            accepted_targeted_assertion_ids=["A2"],
         )
 
 
@@ -103,6 +103,6 @@ async def test_excluded_or_post_cutoff_target_is_not_visible_to_challenge() -> N
     )
 
     assert report.outcome == InvestigationOutcome.INSUFFICIENT_EVIDENCE
-    assert "T1" not in reasoner.challenge_packet.allowed_evidence_ids
+    assert "A2" not in reasoner.challenge_packet.allowed_assertion_ids
     assert reasoner.generate_calls == 1
     assert reasoner.challenge_calls == 1

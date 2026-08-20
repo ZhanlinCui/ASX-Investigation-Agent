@@ -42,7 +42,7 @@ class GapReasoner:
                     rank=1,
                     statement="Raised production guidance drove the recorded move.",
                     expected_signature="Positive gap and elevated volume.",
-                    supporting_evidence_ids=["E1"],
+                    supporting_assertion_ids=["A1"],
                 )
             ],
             evidence_gap=EvidenceGapRequest(

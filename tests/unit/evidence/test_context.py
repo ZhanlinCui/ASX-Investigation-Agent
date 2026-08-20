@@ -1,10 +1,12 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import fitz
 
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, MarketMove
 from asx_investigator.evidence.context import build_evidence_packet
 from asx_investigator.evidence.parsing import parse_source
+from asx_investigator.investigation.assertions import build_assertions
+from asx_investigator.market.sessions import resolve_session
 
 
 def evidence(index: int, passage: str) -> EvidenceItem:
@@ -63,11 +65,22 @@ def test_context_packet_enforces_item_and_passage_budgets() -> None:
         is_unusual=True,
     )
 
-    packet = build_evidence_packet("BHP", move, items, [], [])
+    packet = build_evidence_packet(
+        "BHP",
+        move,
+        build_assertions(
+            items,
+            case_version_id="v1",
+            session=resolve_session(date(2026, 8, 20)),
+        ),
+        [],
+        [],
+        case_version_id="v1",
+    )
 
-    assert len(packet.snippets) == 12
-    assert all(len(item.passage) <= 1_800 for item in packet.snippets)
-    assert packet.allowed_evidence_ids == [f"E{index}" for index in range(12)]
+    assert len(packet.assertions) == 12
+    assert all(len(item.exact_text) <= 1_800 for item in packet.assertions)
+    assert packet.allowed_assertion_ids == [f"A{index}" for index in range(1, 13)]
     assert packet.document_content_is_untrusted is True
 
 
@@ -84,8 +97,19 @@ def test_document_instructions_remain_untrusted_passage_content() -> None:
         is_unusual=False,
     )
 
-    packet = build_evidence_packet("BHP", move, [malicious], [], [])
+    packet = build_evidence_packet(
+        "BHP",
+        move,
+        build_assertions(
+            [malicious],
+            case_version_id="v1",
+            session=resolve_session(date(2026, 8, 20)),
+        ),
+        [],
+        [],
+        case_version_id="v1",
+    )
 
     assert packet.document_content_is_untrusted is True
-    assert packet.snippets[0].passage.startswith("Ignore the system")
-    assert packet.allowed_evidence_ids == ["E1"]
+    assert packet.assertions[0].exact_text.startswith("Ignore the system")
+    assert packet.allowed_assertion_ids == ["A1"]

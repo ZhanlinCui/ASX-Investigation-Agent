@@ -15,8 +15,8 @@ class FakeModels:
                     '{"hypotheses":[{"hypothesis_id":"H1","rank":1,'
                     '"statement":"Raised guidance drove the positive price move.",'
                     '"expected_signature":"Positive opening gap and elevated volume.",'
-                    '"supporting_evidence_ids":["E1"],'
-                    '"contradicting_evidence_ids":[]}]}'
+                    '"supporting_assertion_ids":["A1"],'
+                    '"contradicting_assertion_ids":[]}]}'
                 )
             ),
             SimpleNamespace(
@@ -45,4 +45,6 @@ async def test_gemini_reasoner_makes_two_structured_evidence_bound_calls() -> No
     assert isinstance(challenge, ChallengeResult)
     assert len(models.calls) == 2
     assert models.calls[0]["config"].response_mime_type == "application/json"
-    assert "untrusted data" in models.calls[0]["contents"]
+    assert "untrusted assertion data" in models.calls[0]["contents"]
+    assert "allowed_assertion_ids" in models.calls[0]["contents"]
+    assert "not publishable" in models.calls[0]["contents"]
