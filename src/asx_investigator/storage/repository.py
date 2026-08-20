@@ -91,11 +91,12 @@ CREATE TABLE IF NOT EXISTS provider_calls (
     artifact_id TEXT
 );
 CREATE TABLE IF NOT EXISTS evidence_records (
-    evidence_id TEXT PRIMARY KEY,
+    evidence_id TEXT NOT NULL,
     version_id TEXT NOT NULL REFERENCES case_versions(version_id),
     artifact_id TEXT,
     content_hash TEXT NOT NULL,
     origin_hash TEXT NOT NULL,
+    source_name TEXT NOT NULL DEFAULT '',
     source_url TEXT NOT NULL,
     published_at TEXT NOT NULL,
     retrieved_at TEXT NOT NULL,
@@ -104,13 +105,16 @@ CREATE TABLE IF NOT EXISTS evidence_records (
     title TEXT NOT NULL,
     passage TEXT NOT NULL,
     locator TEXT,
-    page INTEGER
+    page INTEGER,
+    PRIMARY KEY(version_id, evidence_id)
 );
 CREATE INDEX IF NOT EXISTS idx_case_versions_case ON case_versions(case_id, version_number);
 CREATE INDEX IF NOT EXISTS idx_run_events_version ON run_events(version_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_provider_calls_version ON provider_calls(version_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_records_version ON evidence_records(version_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_records_hash ON evidence_records(content_hash, origin_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_records_version_hash
+    ON evidence_records(version_id, content_hash);
 """
 
 
@@ -126,6 +130,13 @@ class SQLiteCaseRepository:
             await connection.execute("PRAGMA journal_mode=WAL")
             await connection.execute("PRAGMA foreign_keys=ON")
             await connection.executescript(SCHEMA)
+            columns = await (
+                await connection.execute("PRAGMA table_info(evidence_records)")
+            ).fetchall()
+            if "source_name" not in {str(row[1]) for row in columns}:
+                await connection.execute(
+                    "ALTER TABLE evidence_records ADD COLUMN source_name TEXT NOT NULL DEFAULT ''"
+                )
             await connection.commit()
 
     async def journal_mode(self) -> str:

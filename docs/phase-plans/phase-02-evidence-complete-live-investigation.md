@@ -70,14 +70,14 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 
 ### P2.3: Evidence and context
 
-- [ ] Accept PDF and text up to 20 MB and safe HTTP/HTTPS URLs.
-- [ ] Reject private/reserved hosts, excessive redirects, unsupported MIME types and oversized responses.
-- [ ] Freeze content before parsing; persist source metadata and hash.
-- [ ] Extract page-aware PDF passages and block-aware HTML/text passages.
-- [ ] Deduplicate identical content and shared origins.
-- [ ] Index passages with SQLite FTS5 and filter by ticker, date, role and authority.
-- [ ] Assemble at most 12 snippets of at most 1,800 characters each.
-- [ ] Gate: exact locator, temporal eligibility, injection isolation, deduplication and context-budget tests pass.
+- [x] Accept PDF and text up to 20 MB and safe HTTP/HTTPS URLs.
+- [x] Reject private/reserved hosts, excessive redirects, unsupported MIME types and oversized responses.
+- [x] Freeze content before parsing; persist source metadata and hash.
+- [x] Extract page-aware PDF passages and block-aware HTML/text passages.
+- [x] Deduplicate identical content and group shared origins.
+- [x] Index passages with SQLite FTS5 and filter by case version, role, authority and publication cutoff.
+- [x] Assemble at most 12 snippets of at most 1,800 characters each.
+- [x] Gate: exact locator, temporal eligibility, injection isolation, deduplication and context-budget tests pass.
 
 ### P2.4: Controlled investigation
 
