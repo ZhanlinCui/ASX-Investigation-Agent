@@ -152,6 +152,54 @@ class FrozenStructuredReasoner:
         )
 
 
+class AlternatingProseReasoner(FrozenStructuredReasoner):
+    """Emit different private model prose while retaining the same decision IDs."""
+
+    model_configuration = {
+        "provider": "FROZEN_TEST_REASONER",
+        "model": "alternating-prose-v1",
+        "structured_calls_max": "2",
+    }
+
+    async def generate(self, packet):
+        self.generate_calls += 1
+        statement, signature = (
+            (
+                "BHP raised FY26 production guidance before ASX trading opened.",
+                "A positive open gap accompanied the guidance update.",
+            )
+            if self.generate_calls % 2
+            else (
+                "Before ASX opened, BHP raised its FY26 production guidance.",
+                "Guidance aligns with an upward opening move and high volume.",
+            )
+        )
+        return HypothesisBatch(
+            hypotheses=[
+                HypothesisProposal(
+                    hypothesis_id="H1",
+                    rank=1,
+                    statement=statement,
+                    expected_signature=signature,
+                    supporting_assertion_ids=["A1"],
+                )
+            ]
+        )
+
+    async def challenge(self, packet, hypotheses):
+        self.challenge_calls += 1
+        return ChallengeResult(
+            leading_hypothesis_id="H1",
+            timing_leakage=False,
+            unsupported_assumptions=[],
+            summary=(
+                "The first phrasing has no stronger eligible alternative."
+                if self.challenge_calls % 2
+                else "The second phrasing has no stronger eligible alternative."
+            ),
+        )
+
+
 async def test_gold_execution_requires_a_configured_reasoner_unless_fixture_mode_is_explicit(
     tmp_path: Path,
 ) -> None:
@@ -185,6 +233,28 @@ async def test_gold_execution_records_configured_reasoner_latency_and_known_cost
     assert result.model_configuration == reasoner.model_configuration
     assert result.cases[0].latency_ms is not None
     assert result.cases[0].estimated_cost_aud == 0.012
+
+
+async def test_gold_reproducibility_ignores_private_model_prose_when_decisions_match(
+    tmp_path: Path,
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+
+    result = await execute_gold_corpus(
+        corpus,
+        reasoner=AlternatingProseReasoner(),
+        estimated_cost_aud=0.012,
+    )
+
+    assert result.status == "PASS"
+    reproducibility = next(
+        check
+        for check in result.cases[0].evaluation.checks
+        if check.name == "ledger_reproducibility"
+    )
+    assert reproducibility.passed is True
 
 
 async def test_external_gold_runner_forwards_a_configured_reasoner_and_aud_cost(

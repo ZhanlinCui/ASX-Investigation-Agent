@@ -9,6 +9,7 @@ from asx_investigator.agent.reasoning import (
     HypothesisProposal,
     ReasoningUnavailable,
 )
+from asx_investigator.confidence.calibration import calibration_record_from_evaluation
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, ValidationStatus
 from asx_investigator.evaluation.grading import grade_report
 from asx_investigator.evaluation.models import EvalCaseManifest
@@ -372,6 +373,45 @@ async def test_required_corporate_actions_failure_never_becomes_no_catalyst() ->
         check for check in evaluation.checks if check.name == "provider_failure_semantics"
     )
     assert provider_check.passed is False
+
+
+async def test_allowed_abstention_is_not_a_passing_attribution_observation() -> None:
+    report = await InvestigationService(
+        RecordedToolGateway.default(), reasoner=FailingReasoner()
+    ).investigate("BHP", "2026-08-20", mode="RECORDED")
+    manifest = EvalCaseManifest(
+        case_id="allowed-abstention",
+        category="ambiguous",
+        scenario="model is unavailable and abstention is allowed",
+        ticker="BHP",
+        trade_date=report.trade_date,
+        evidence_cutoff=report.evidence[0].retrieved_at,
+        driver_labels=["ISSUER_DISCLOSURE"],
+        acceptable_alternatives=[],
+        required_evidence_ids=["E1"],
+        future_evidence_blacklist=[],
+        mechanical_flags=["CHECKED_NO_EVENT"],
+        coverage_expectation="COMPLETE",
+        abstention_policy="ALLOWED",
+        expected_outcome="INSUFFICIENT_EVIDENCE",
+    )
+
+    evaluation = grade_report(manifest, report, latency_ms=1, estimated_cost_aud=0.0)
+    checks = {check.name: check for check in evaluation.checks}
+    record = calibration_record_from_evaluation(
+        report,
+        evaluation,
+        cohort="DEVELOPMENT",
+        material_error=False,
+    )
+
+    assert checks["top_1_attribution"].passed is False
+    assert checks["top_1_attribution"].hard_gate is False
+    assert checks["top_2_attribution"].passed is False
+    assert checks["top_2_attribution"].hard_gate is False
+    assert record.abstained is True
+    assert record.checks["top_1"] is False
+    assert record.checks["top_2"] is False
 
 
 async def test_issuer_dividend_prose_cannot_manufacture_a_mechanical_explanation() -> None:

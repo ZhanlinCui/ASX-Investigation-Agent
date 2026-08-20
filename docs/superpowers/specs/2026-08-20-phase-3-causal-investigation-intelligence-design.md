@@ -23,7 +23,7 @@ Given an ASX ticker and trading date, the product must:
 6. expose why it answered, abstained, or reported incomplete data;
 7. produce a trace that can be replayed and graded without hidden state.
 
-An unseen case is successful when the agent either identifies an acceptable driver with valid citations or abstains for a reason allowed by the case policy. A fluent unsupported answer is a failure.
+An unseen case is successful when the agent either identifies an acceptable driver with valid citations or abstains for a reason allowed by the case policy. Attribution rates include only published `EXPLAINED` cases; abstentions are a separate policy metric. A fluent unsupported answer is a failure.
 
 ## Architectural choice
 
@@ -51,7 +51,7 @@ This structure keeps the useful parts of an agent: hypothesis formation, targete
 
 The current service coordinates the full pipeline in one large unit. Phase 3 introduces an `InvestigationKernel` whose stages exchange typed values. The kernel owns ordering, budgets, checkpoints and terminal outcomes. It does not own provider implementations, document parsing, confidence rules or report presentation.
 
-The central state is an append-only `InvestigationLedger`. Each entry records the stage, input hashes, output hashes, policy versions, model configuration, validation result and timestamp. Checkpoint state remains the recovery format. The ledger is the audit format. Neither is used as model memory outside the current case version.
+The central state is an append-only `InvestigationLedger`. Each entry records the stage, input hashes, output hashes, policy versions, model configuration, validation result and timestamp. Checkpoint state remains the recovery format. The ledger is the audit format. Neither is used as model memory outside the current case version. Reproducibility gates compare the validated public decision, assertion/artifact IDs and policy trace, rather than raw sampled model wording retained in the ledger.
 
 The kernel runs a fixed set of causal mechanism tests:
 

@@ -120,10 +120,11 @@ def grade_report(
         abstention_ok = str(report.outcome) == "EXPLAINED"
     else:
         abstention_ok = True
-    top_one_ok = str(report.outcome) != "EXPLAINED" or (
+    answerable_attribution = str(report.outcome) == "EXPLAINED"
+    top_one_ok = answerable_attribution and (
         (not required or bool(required & leading_ids)) and leading_label in manifest.driver_labels
     )
-    top_two_ok = bool(
+    top_two_ok = answerable_attribution and bool(
         top_two_labels & set([*manifest.driver_labels, *manifest.acceptable_alternatives])
     )
     provider_semantics_ok = not (
@@ -147,13 +148,18 @@ def grade_report(
             name="top_1_attribution",
             passed=top_one_ok,
             detail=(
-                f"label={leading_label}; leading={sorted(leading_ids)}; required={sorted(required)}"
+                f"answerable={answerable_attribution}; label={leading_label}; "
+                f"leading={sorted(leading_ids)}; required={sorted(required)}"
             ),
+            hard_gate=answerable_attribution,
         ),
         GraderCheck(
             name="top_2_attribution",
-            passed=top_two_ok if str(report.outcome) == "EXPLAINED" else True,
-            detail=f"top_two_labels={sorted(top_two_labels)}",
+            passed=top_two_ok,
+            detail=(
+                f"answerable={answerable_attribution}; top_two_labels={sorted(top_two_labels)}"
+            ),
+            hard_gate=answerable_attribution,
         ),
         GraderCheck(
             name="grounding",
@@ -286,14 +292,14 @@ def evaluate_release_gates(
     for metric in (*safety_metrics, *behavioral_metrics):
         eligible_records = records
         if metric in _REQUIRED_ATTRIBUTION_METRICS:
-            # Required-abstention manifests are safety tests for abstention, not
-            # answerable attribution observations. Their grade report keeps the
-            # raw top-1/top-2 checks for auditability, while release denominators
-            # exclude them so an abstention cannot manufacture attribution pass.
+            # Attribution rates cover published causal explanations only. Any
+            # abstention, including an ALLOWED abstention, is assessed by the
+            # abstention gates and never contributes a pass or failure to top-1
+            # or top-2 attribution denominators.
             eligible_records = [
                 record
                 for record in records
-                if "required_abstention" not in record.checks
+                if not record.abstained
             ]
         values = [
             record.checks[metric]
@@ -346,24 +352,125 @@ def evaluate_release_gates(
     )
 
 
-def normalized_ledger(report: InvestigationReport) -> list[dict[str, object]]:
-    """Compare replay-safe ledger fields without process-clock timestamps."""
+def normalized_ledger(report: InvestigationReport) -> dict[str, object]:
+    """Compare the deterministic, publishable result of two gold executions.
 
-    return [
-        {
-            "sequence": entry.sequence,
-            "stage": entry.stage,
-            "status": entry.status,
-            "input_hashes": entry.input_hashes,
-            "output_hashes": entry.output_hashes,
-            "schema_version": entry.schema_version,
-            "policy_version": entry.policy_version,
-            "model_configuration": entry.model_configuration,
-            "validation_status": entry.validation_status,
-            "validation_summary": entry.validation_summary,
-        }
-        for entry in report.ledger
-    ]
+    Ledger output hashes bind checkpoint state, including private model proposal
+    prose and challenge summaries. That is valuable audit material but cannot be
+    a reproducibility gate while model sampling remains non-zero. The release
+    comparison therefore projects only validated decisions, assertion/artifact
+    identities and the policy trace. Raw model text stays in the private ledger.
+    """
+
+    return {
+        "outcome": str(report.outcome),
+        "confidence": {
+            "band": report.confidence.band,
+            "selected_hypothesis_id": report.confidence.selected_hypothesis_id,
+            "rule_version": report.confidence.rule_version,
+            "applied_caps": sorted(report.confidence.applied_caps),
+        },
+        "coverage": {
+            "status": report.coverage_status,
+            "completeness_status": report.completeness.status,
+            "required_capabilities": sorted(report.completeness.required_capabilities),
+            "missing_capabilities": sorted(report.completeness.missing_capabilities),
+            "gaps": [
+                {
+                    "gap_id": gap.gap_id,
+                    "capability": gap.capability,
+                    "provider": gap.provider,
+                    "retryable": gap.retryable,
+                }
+                for gap in report.coverage_gaps
+            ],
+            "conflicts": [
+                {
+                    "conflict_id": conflict.conflict_id,
+                    "field": conflict.field,
+                    "primary_source": conflict.primary_source,
+                    "primary_value": conflict.primary_value,
+                    "secondary_source": conflict.secondary_source,
+                    "secondary_value": conflict.secondary_value,
+                    "resolution": conflict.resolution,
+                    "material": conflict.material,
+                }
+                for conflict in report.conflicts
+            ],
+        },
+        "claims": [
+            {
+                "claim_id": claim.claim_id,
+                "claim_type": str(claim.claim_type),
+                "supporting_evidence_ids": sorted(claim.supporting_evidence_ids),
+                "contradicting_evidence_ids": sorted(claim.contradicting_evidence_ids),
+            }
+            for claim in report.claims
+        ],
+        "hypotheses": [
+            {
+                "hypothesis_id": hypothesis.hypothesis_id,
+                "rank": hypothesis.rank,
+                "status": str(hypothesis.status),
+                "driver_label": hypothesis.driver_label,
+                "supporting_evidence_ids": sorted(hypothesis.supporting_evidence_ids),
+                "contradicting_evidence_ids": sorted(
+                    hypothesis.contradicting_evidence_ids
+                ),
+                "validation_ids": sorted(hypothesis.validation_ids),
+            }
+            for hypothesis in report.hypotheses
+        ],
+        "assertions": [
+            {
+                "assertion_id": assertion.assertion_id,
+                "evidence_id": assertion.evidence_id,
+                "span_hash": assertion.span_hash,
+                "artifact_hash": assertion.artifact_hash,
+                "causal_eligible": assertion.causal_eligible,
+                "mechanism_hint": str(assertion.mechanism_hint),
+            }
+            for assertion in report.assertions
+        ],
+        "mechanism_tests": [
+            {
+                "test_id": test.test_id,
+                "mechanism": str(test.mechanism),
+                "status": str(test.status),
+                "supporting_assertion_ids": sorted(test.supporting_assertion_ids),
+                "contradicting_assertion_ids": sorted(test.contradicting_assertion_ids),
+                "taxonomy_version": test.taxonomy_version,
+                "policy_version": test.policy_version,
+            }
+            for test in report.mechanism_tests
+        ],
+        "validation_results": [
+            {
+                "validation_id": validation.validation_id,
+                "kind": validation.kind,
+                "status": str(validation.status),
+                "evidence_ids": sorted(validation.evidence_ids),
+            }
+            for validation in report.validation_results
+        ],
+        "artifact_hashes": sorted(report.artifact_hashes),
+        "source_policy_version": report.source_policy_version,
+        "confidence_rule_version": report.confidence.rule_version,
+        "ledger_policy_trace": [
+            {
+                "sequence": entry.sequence,
+                "stage": entry.stage,
+                "status": entry.status,
+                "schema_version": entry.schema_version,
+                "policy_version": entry.policy_version,
+                "model_configuration": entry.model_configuration,
+                "validation_status": str(entry.validation_status)
+                if entry.validation_status is not None
+                else None,
+            }
+            for entry in report.ledger
+        ],
+    }
 
 
 def _assertion_integrity(report: InvestigationReport, material: list[object]) -> tuple[bool, str]:

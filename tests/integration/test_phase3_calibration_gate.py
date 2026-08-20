@@ -40,6 +40,7 @@ def release_record(
     *,
     band: str = "MEDIUM",
     correct: bool = True,
+    abstained: bool = False,
     material_error: bool = False,
     checks: dict[str, bool] | None = None,
 ) -> CalibrationRecord:
@@ -47,6 +48,7 @@ def release_record(
         case_id=case_id,
         confidence_band=band,
         correct=correct,
+        abstained=abstained,
         material_error=material_error,
         checks=checks or {},
     )
@@ -189,6 +191,8 @@ def test_required_abstentions_do_not_dilute_answerable_attribution_failures() ->
     records.extend(
         release_record(
             f"required-abstention-{index}",
+            correct=False,
+            abstained=True,
             checks=required_abstention_checks,
         )
         for index in range(20)
@@ -203,6 +207,42 @@ def test_required_abstentions_do_not_dilute_answerable_attribution_failures() ->
     assert gate.denominators["top_2"] == 1
     assert gate.denominators["required_abstention"] == 20
     assert "top_1 is below the 75% threshold" in gate.failures
+
+
+def test_allowed_abstentions_cannot_inflate_answerable_attribution_rates() -> None:
+    answerable_failure = release_record(
+        "answerable-failure",
+        checks={**_COMPLETE_RELEASE_CHECKS, "top_1": False, "top_2": False},
+    )
+    # These deliberately retain legacy-looking positive attribution checks to
+    # prove the release denominator follows the explicit abstained state, not
+    # a raw per-case attribution value. A separate grader regression proves an
+    # ALLOWED abstention now emits false (non-hard) attribution checks.
+    allowed_abstentions = [
+        release_record(
+            f"allowed-abstention-{index}",
+            correct=False,
+            abstained=True,
+            checks=_COMPLETE_RELEASE_CHECKS,
+        )
+        for index in range(20)
+    ]
+    required_abstention = release_record(
+        "required-abstention",
+        correct=False,
+        abstained=True,
+        checks={**_COMPLETE_RELEASE_CHECKS, "required_abstention": True},
+    )
+
+    gate = evaluate_release_gates(
+        [answerable_failure, *allowed_abstentions, required_abstention]
+    )
+
+    assert gate.status == "FAIL"
+    assert gate.raw_counts["top_1"] == {"passed": 0, "failed": 1}
+    assert gate.denominators["top_1"] == 1
+    assert gate.raw_counts["top_2"] == {"passed": 0, "failed": 1}
+    assert gate.denominators["top_2"] == 1
 
 
 def test_release_requires_observed_required_abstention_behavior() -> None:

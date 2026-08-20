@@ -110,7 +110,7 @@ Provider cache is not memory. It has a source, retrieval time, expiry and conten
 
 Development, regression and sealed holdout cases are separated. Gold labels record the evidence cutoff, leading driver, acceptable alternatives, prohibited future evidence, mechanical flags, coverage expectation and a typed `REQUIRED`, `ALLOWED` or `FORBIDDEN` abstention policy.
 
-Deterministic graders own time, session, citation, numeric and provider-failure checks. A model judge may help classify failures but cannot override a hard gate or a human label.
+Deterministic graders own time, session, citation, numeric and provider-failure checks. Top-1 and top-2 measure only published `EXPLAINED` outcomes; abstentions are evaluated by their separate policy gates. Gold replay compares validated decisions, assertion/artifact identities and policy trace, never private model prose. A model judge may help classify failures but cannot override a hard gate or a human label.
 
 ## Later phases
 

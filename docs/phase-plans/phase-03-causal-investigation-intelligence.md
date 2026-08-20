@@ -36,7 +36,7 @@ Build an assertion-bound causal investigation agent for unusual ASX equity moves
 
 Phase 3 cannot claim Live validation until the real development corpus, sealed holdout and credentialed Live smoke run have measured results. Safety checks use zero tolerance for lookahead, session errors, missing material citations, invalid assertion support, provider-failure misclassification and materially wrong HIGH explanations.
 
-Behavior gates report raw numerators and denominators: top-1 at least 75 percent and top-2 at least 90 percent on answerable cases only; required abstention is 100 percent with a non-zero required-case denominator; false abstention is at most 20 percent on answerable cases.
+Behavior gates report raw numerators and denominators: top-1 at least 75 percent and top-2 at least 90 percent on published `EXPLAINED` cases only; required abstention is 100 percent with a non-zero required-case denominator; false abstention is at most 20 percent on answerable cases. Reproducibility compares validated decisions, assertion/artifact identities and policy trace; private model wording is retained only for audit and never makes an otherwise identical replay fail.
 
 ## P3.6 release record
 
