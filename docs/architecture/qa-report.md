@@ -46,7 +46,7 @@ The final render shows no clipped or overlapping content. All architecture diagr
 
 ## Content checks
 
-- Current repository state is separated from the target architecture.
+- Current runnable-MVP state is separated from the target architecture and from production-readiness claims.
 - No target release metric is presented as an observed result.
 - Provider failure is distinct from an empty successful response.
 - Later evidence is restricted to retrospective context for earlier moves.
@@ -54,3 +54,4 @@ The final render shows no clipped or overlapping content. All architecture diagr
 - Memory excludes previous narratives and sealed holdout labels from production priors.
 - The four required design decisions are answered on the cover and final page.
 - External market, governance, security and calibration claims map to `docs/architecture/references.md`.
+- Repository status reflects revision `ca128bc`: 12 passing Python tests and one passing recorded regression case, with confidence still labelled `UNCALIBRATED` and no blind performance result.

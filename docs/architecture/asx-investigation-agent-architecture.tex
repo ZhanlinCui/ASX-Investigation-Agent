@@ -124,7 +124,7 @@
 \node[card,anchor=north west,text width=57mm,minimum height=31mm] at (155,-126) {\TinyLabel{Decision 03}\\[1.2mm]\SmallTitle{Memory}\\[1mm]\Body{Case-local reasoning, safe reference facts, cache separation, sealed evaluation assets.}};
 \node[card,anchor=north west,text width=57mm,minimum height=31mm] at (223,-126) {\TinyLabel{Decision 04}\\[1.2mm]\SmallTitle{Evaluation}\\[1mm]\Body{Retrieval, attribution, grounding, timing, calibration, abstention and operations.}};
 
-\node[cardamber,anchor=north west,text width=261mm,minimum height=17mm] at (19,-169) {\TinyLabel{Status boundary}\hspace{2mm}\Body{This dossier specifies the target architecture. The repository currently contains a committed design baseline and an untracked scaffold; it is not a completed agent and has no evaluation results.}};
+\node[cardamber,anchor=north west,text width=261mm,minimum height=17mm] at (19,-169) {\TinyLabel{Status boundary}\hspace{2mm}\Body{This dossier specifies the target architecture. The repository now contains a runnable MVP with API, recorded and live gateways, Gemini synthesis, 12 passing Python tests and one passing recorded regression case. Confidence remains uncalibrated; no blind performance result exists.}};
 \node[anchor=south west,text=Graphite,text width=260mm] at (19,-197) {\SourceLine{Basis: repository design specification, master development plan, frontend design baseline and verified repository inspection [R9-R12].}};
 \end{dossierpage}
 
@@ -417,7 +417,7 @@ ECE & $\leq 0.08$ + counts + interval\\
 \end{minipage}\\[1.2mm]\Fine{If the sample is too small, report uncertainty and avoid false precision.}};
 
 \node[cardred,anchor=north west,text width=259mm,minimum height=20mm] at (13,-170) {\TinyLabel{Failure taxonomy}\\[1mm]\Body{DATA \textbullet\ RETRIEVAL \textbullet\ TEMPORAL \textbullet\ QUANTITATIVE \textbullet\ REASONING \textbullet\ GROUNDING \textbullet\ CALIBRATION \textbullet\ INFRASTRUCTURE}\hspace{5mm}\Fine{Every failed case links to its trace and the first failing stage.}};
-\node[anchor=north west,text=Warning,font=\fontsize{5.6}{6.5}\selectfont\bfseries] at (179,-185) {Current repository: no eval dataset, harness or measured result is available.};
+\node[anchor=north west,text=Warning,font=\fontsize{5.6}{6.5}\selectfont\bfseries] at (179,-185) {Current repository: recorded regression 1/1; no blind corpus or calibrated performance claim.};
 \node[anchor=south west,text=Graphite,text width=274mm] at (13,-197) {\SourceLine{Dataset policy, metrics and gates [R9-R10]. Calibration semantics [R7]. AI test and evaluation governance [R4-R5].}};
 \end{dossierpage}
 
@@ -468,7 +468,7 @@ ECE & $\leq 0.08$ + counts + interval\\
   \draw[Teal,line width=.7pt] (\x,-187) circle (2mm);
   \node[anchor=north,text=Ink,font=\fontsize{5.1}{6}\selectfont\bfseries] at (\x,-190) {\label};
 }
-\node[anchor=south west,text=Warning,font=\fontsize{5.6}{6.5}\selectfont\bfseries,text width=178mm] at (13,-197) {CURRENT: design baseline + scaffold; tests stop at missing investigation package; no measured eval results.};
+\node[anchor=south west,text=Warning,font=\fontsize{5.6}{6.5}\selectfont\bfseries,text width=178mm] at (13,-197) {CURRENT: runnable MVP; 12 Python tests pass; recorded eval 1/1; confidence is explicitly UNCALIBRATED.};
 \node[anchor=south east,text=Graphite] at (285,-197) {\SourceLine{Sources: governance [R4-R5], security [R6], checkpoints [R8], roadmap [R9-R12].}};
 \end{dossierpage}
 
