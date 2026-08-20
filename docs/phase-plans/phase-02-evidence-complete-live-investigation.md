@@ -116,7 +116,8 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 - [x] Add typed refinement and parent-child version comparison.
 - [x] Keep JSON, Markdown and UI on the same report schema.
 - [x] Add CI for Python tests/lint, frontend tests/build and recorded evaluation smoke.
-- [ ] Gate: clean checkout verification and credentialed live smoke pass, or the release remains recorded-only.
+- [x] Gate: clean checkout runs backend tests/lint, recorded evaluation, frontend tests and production build without modifying tracked files.
+- [ ] Gate: credentialed Live smoke passes; until then the release remains recorded-only.
 
 ## Public API additions
 

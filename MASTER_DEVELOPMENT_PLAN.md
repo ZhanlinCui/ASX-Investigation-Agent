@@ -39,7 +39,7 @@ Phase 2 makes the vertical slice auditable and recoverable for real cases. It ke
 | P2.4 | Controlled investigation | Complete |
 | P2.5 | Confidence semantics | Complete; probability calibration deferred |
 | P2.6 | Evaluation | Harness and 24 synthetic sentinels complete; real corpus and sealed holdout open |
-| P2.7 | Workbench release | Workbench and CI complete; clean checkout and Live smoke gates open |
+| P2.7 | Workbench release | Workbench, CI and clean-checkout gate complete; credentialed Live smoke open |
 
 Each milestone uses test-first implementation and an independent review checkpoint. A later milestone may not hide a failed earlier gate.
 
