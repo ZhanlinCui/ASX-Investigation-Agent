@@ -1,6 +1,6 @@
 # Phase 3: Causal Investigation Intelligence
 
-**Status:** P3.0–P3.5 complete; P3.6 in progress
+**Status:** Complete for the recorded-only release candidate; external evaluation and Live gates remain open
 **Branch:** `codex/phase3-causal-intelligence`
 **Design:** `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md`
 **Implementation plan:** `docs/superpowers/plans/2026-08-20-phase-3-causal-investigation-intelligence.md`
@@ -19,7 +19,7 @@ Build an assertion-bound causal investigation agent for unusual ASX equity moves
 | P3.3 | Shared-memory admission policy and case isolation | Complete |
 | P3.4 | Production-path frozen gold case execution | Complete |
 | P3.5 | Offline confidence calibration metadata and release gates | Complete |
-| P3.6 | Causal decision workbench and release evidence | In progress |
+| P3.6 | Causal decision workbench and release evidence | Complete |
 
 ## Non-negotiable rules
 
@@ -36,6 +36,12 @@ Build an assertion-bound causal investigation agent for unusual ASX equity moves
 Phase 3 cannot claim Live validation until the real development corpus, sealed holdout and credentialed Live smoke run have measured results. Safety checks use zero tolerance for lookahead, session errors, missing material citations, invalid assertion support, provider-failure misclassification and materially wrong HIGH explanations.
 
 Behavior gates report raw numerators and denominators: top-1 at least 75 percent, top-2 at least 90 percent, required abstention 100 percent and false abstention at most 20 percent on their eligible case sets.
+
+## P3.6 release record
+
+The completed workbench presents exact evidence assertions, mechanism tests, append-only ledger metadata and calibration sample status. Assertion links use the controlled exact-passage endpoint. The public report projection excludes case-version internals from assertions, model configuration and validation prose from ledger entries, and calibration proportions. It preserves established report fields for API compatibility.
+
+Fresh local verification on 21 August 2026 passed: 243 Python tests, Ruff, the 24-case synthetic recorded suite, four frontend tests and the production frontend build. The external development gold corpus, sealed holdout and credentialed Live smoke were not supplied to this checkout, so each remains `NOT_RUN`. The detailed command record is `evals/results/phase3-evaluation.md`.
 
 ## Documentation rule
 

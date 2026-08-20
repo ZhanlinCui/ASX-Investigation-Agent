@@ -59,6 +59,99 @@ def render_markdown(report: InvestigationReport) -> str:
                 else "- Applied caps: none"
             ),
             "",
+            "## Evidence assertions",
+            "",
+        ]
+    )
+    for assertion in report.assertions:
+        eligibility = "eligible" if assertion.causal_eligible else "not eligible"
+        lines.extend(
+            [
+                f"### [{assertion.assertion_id}] evidence [{assertion.evidence_id}]",
+                "",
+                f"- Span hash: `{assertion.span_hash}`",
+                f"- Artifact hash: `{assertion.artifact_hash}`",
+                f"- Published: {assertion.published_at.isoformat()}",
+                f"- Retrieved: {assertion.retrieved_at.isoformat()}",
+                f"- Authority: {assertion.source_authority}",
+                f"- Role: {assertion.role}",
+                f"- Causal eligibility: {eligibility}",
+                f"- Mechanism hint: {assertion.mechanism_hint}",
+                f"- Locator: {assertion.locator or 'Not supplied'}",
+                "",
+                assertion.exact_text,
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Mechanism tests",
+            "",
+        ]
+    )
+    for test in report.mechanism_tests:
+        supporting = ", ".join(test.supporting_assertion_ids) or "none"
+        contradicting = ", ".join(test.contradicting_assertion_ids) or "none"
+        lines.extend(
+            [
+                f"### [{test.test_id}] {test.mechanism}: {test.status}",
+                "",
+                f"- Policy: {test.policy_version}",
+                f"- Taxonomy: {test.taxonomy_version}",
+                f"- Supporting assertions: {supporting}",
+                f"- Contradicting assertions: {contradicting}",
+                f"- Result: {test.summary}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Decision ledger",
+            "",
+        ]
+    )
+    for entry in report.ledger:
+        inputs = ", ".join(f"`{item}`" for item in entry.input_hashes) or "none"
+        outputs = ", ".join(f"`{item}`" for item in entry.output_hashes) or "none"
+        lines.extend(
+            [
+                f"### {entry.sequence}. {entry.stage}: {entry.status}",
+                "",
+                f"- Recorded: {entry.created_at.isoformat()}",
+                f"- Schema: {entry.schema_version}",
+                f"- Policy: {entry.policy_version}",
+                f"- Input artifact hashes: {inputs}",
+                f"- Output artifact hashes: {outputs}",
+                *(
+                    [f"- Validation: {entry.validation_status}"]
+                    if entry.validation_status is not None
+                    else []
+                ),
+                "",
+            ]
+        )
+    calibration = report.calibration_metadata
+    calibration_rule = (
+        calibration.confidence_rule_version or report.confidence.rule_version
+    )
+    lines.extend(
+        [
+            "## Calibration sample status",
+            "",
+            f"- Status: {calibration.status}",
+            f"- Label: {calibration.label}",
+            f"- Corpus: {calibration.corpus_version or 'Not attached'}",
+            f"- Confidence rules: {calibration_rule}",
+        ]
+    )
+    for band, sample in sorted(calibration.bands.items()):
+        lines.append(
+            f"- {band}: {sample.status}; eligible cases {sample.eligible_cases}; "
+            f"material errors {sample.material_errors}"
+        )
+    lines.extend(
+        [
+            "",
             "## Evidence register",
             "",
         ]

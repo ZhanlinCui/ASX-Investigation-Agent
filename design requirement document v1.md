@@ -1,8 +1,8 @@
 # ASX Investigation Workbench
 ## Product Design Requirement
 
-**Version:** 2.4
-**Status:** Phase 2.8 product baseline; P3.0–P3.5 complete; P3.6 workbench and release evidence in progress
+**Version:** 2.5
+**Status:** Phase 3 complete for the recorded-only release candidate; external evaluation and Live gates remain open
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -59,13 +59,9 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - Shared issuer reference facts admitted as bounded, point-in-time `CONTEXT_ONLY` context. They cannot support a hypothesis or claim, and prior case conclusions and holdout labels are rejected.
 - Frozen, hash-verified gold bundles that run through the production investigation path. Blind holdout reports never load or display sealed labels.
 - Reviewed ordinal calibration metadata and release gates. Confidence remains a band, not a probability; missing external gold evaluation remains visibly `NOT_RUN`.
-
-### Proposed for later Phase 3 milestones
-
-- Calibration sample status for LOW, MEDIUM and HIGH bands.
-- Blind evaluation export without development or sealed labels.
-
-These items are planned behavior. They are not part of the current recorded release until their milestone gates pass.
+- Compact audited decision surfaces for exact evidence assertions, mechanism tests, decision-ledger stage and artifact hashes, and ordinal calibration samples.
+- Controlled exact-passage links from an assertion to its frozen source content.
+- Visible `NOT_RUN` states for missing external development gold, sealed holdout and credentialed Live gates. A missing gate never appears as a passing release.
 
 ## Design direction
 

@@ -117,6 +117,95 @@ class SourceAccepted(BaseModel):
     retrieved_at: datetime
 
 
+def public_report_payload(report: InvestigationReport) -> dict[str, object]:
+    """Return the stable public report view without expanding audit exposure.
+
+    The persisted report is the internal validated record. Phase 3 adds a
+    narrower public projection for its assertion, mechanism, ledger and
+    calibration fields so a future internal field cannot accidentally expose
+    provider payloads, model traces, private memory or calibration
+    probabilities through the case endpoint.
+    """
+
+    payload: dict[str, object] = report.model_dump(mode="json")
+    payload["assertions"] = [
+        item.model_dump(
+            mode="json",
+            include={
+                "assertion_id",
+                "evidence_id",
+                "exact_text",
+                "span_hash",
+                "artifact_hash",
+                "published_at",
+                "retrieved_at",
+                "source_authority",
+                "locator",
+                "role",
+                "causal_eligible",
+                "mechanism_hint",
+                "normalized_entities",
+                "normalized_values",
+                "contradicting_assertion_ids",
+            },
+        )
+        for item in report.assertions
+    ]
+    payload["mechanism_tests"] = [
+        item.model_dump(
+            mode="json",
+            include={
+                "test_id",
+                "mechanism",
+                "status",
+                "summary",
+                "taxonomy_version",
+                "policy_version",
+                "created_at",
+                "supporting_assertion_ids",
+                "contradicting_assertion_ids",
+            },
+        )
+        for item in report.mechanism_tests
+    ]
+    payload["ledger"] = [
+        item.model_dump(
+            mode="json",
+            include={
+                "sequence",
+                "stage",
+                "status",
+                "input_hashes",
+                "output_hashes",
+                "schema_version",
+                "policy_version",
+                "validation_status",
+                "created_at",
+            },
+        )
+        for item in report.ledger
+    ]
+    calibration = report.calibration_metadata
+    payload["calibration_metadata"] = {
+        **calibration.model_dump(mode="json", exclude={"bands"}),
+        "bands": {
+            band: sample.model_dump(
+                mode="json",
+                include={
+                    "eligible_cases",
+                    "correct_cases",
+                    "acceptable_alternative_cases",
+                    "abstained_cases",
+                    "material_errors",
+                    "status",
+                },
+            )
+            for band, sample in calibration.bands.items()
+        },
+    }
+    return payload
+
+
 class CaseManager:
     """Durable case runner with append-only public events."""
 
@@ -680,7 +769,7 @@ def create_app(
             report = InvestigationReport.model_validate(record.report_payload)
             if format == "markdown":
                 return Response(render_markdown(report), media_type="text/markdown")
-            return report.model_dump(mode="json")
+            return public_report_payload(report)
         return {
             "case_id": record.case_id,
             "version_id": record.version_id,

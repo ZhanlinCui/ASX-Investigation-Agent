@@ -1,7 +1,7 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 21 August 2026
-**Product stage:** Phase 3.0–P3.5 complete; Phase 3.6 workbench and release evidence in progress; Phase 2.8 recorded release candidate
+**Product stage:** Phase 3 complete; recorded-only release candidate; external evaluation and Live gates open
 
 **Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
 **Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
@@ -60,7 +60,7 @@ Each milestone uses test-first implementation and an independent review checkpoi
 
 ## Phase 3: Causal Investigation Intelligence
 
-Phase 3 will replace the current coarse hypothesis interface with assertion-bound hypotheses and a deterministic claim compiler. It will add an append-only investigation ledger, explicit shared-memory admission rules, production-path real-case evaluation and empirical calibration metadata for the existing confidence bands.
+Phase 3 replaces the current coarse hypothesis interface with assertion-bound hypotheses and a deterministic claim compiler. It adds an append-only investigation ledger, explicit shared-memory admission rules, production-path frozen-case evaluation and ordinal calibration metadata for the existing confidence bands.
 
 The proposed sequence is:
 
@@ -71,7 +71,7 @@ The proposed sequence is:
 5. publish calibration counts and release gates;
 6. close credentialed Live evidence and workbench gates.
 
-P3.0 completed the domain contract and documentation baseline. P3.1 completed the typed investigation kernel and append-only decision ledger. P3.2 binds causal reasoning and published claims to exact evidence assertions. P3.3 admits only bounded, point-in-time issuer reference facts as non-causal context; it rejects case conclusions and holdout data, and keeps context outside assertions, mechanisms, claims and citations. P3.4 executes hash-verified frozen gold bundles through the production path and produces blind holdout reports without loading sealed labels. P3.5 adds reviewed ordinal calibration metadata and deterministic release gates. P3.6 is exposing the resulting causal decisions and measured release evidence in the workbench. Phase 2.8 remains the current runnable recorded release candidate, and all missing external gates remain `NOT_RUN`.
+P3.0 completed the domain contract and documentation baseline. P3.1 completed the typed investigation kernel and append-only decision ledger. P3.2 binds causal reasoning and published claims to exact evidence assertions. P3.3 admits only bounded, point-in-time issuer reference facts as non-causal context; it rejects case conclusions and holdout data, and keeps context outside assertions, mechanisms, claims and citations. P3.4 executes hash-verified frozen gold bundles through the production path and produces blind holdout reports without loading sealed labels. P3.5 adds reviewed ordinal calibration metadata and deterministic release gates. P3.6 publishes audited assertion, mechanism, ledger and calibration views in JSON, Markdown and the workbench. The current runnable release remains recorded-only; all external gates remain `NOT_RUN`. See `evals/results/phase3-evaluation.md` for the fresh release record.
 
 ## Architecture boundaries
 
