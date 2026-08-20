@@ -11,7 +11,10 @@ from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers.recorded import RecordedToolGateway
 from asx_investigator.storage.artifacts import ArtifactStore
 from asx_investigator.storage.repository import SQLiteCaseRepository
-from tests.unit.test_p28_live_artifacts import _ArtifactGateway
+from tests.unit.test_p28_live_artifacts import (
+    _ArtifactGateway,
+    _UnavailableArtifactGateway,
+)
 
 
 def test_source_api_returns_hash_but_never_raw_body(tmp_path: Path) -> None:
@@ -81,3 +84,37 @@ def test_provider_artifact_id_is_persisted_with_diagnostics(tmp_path: Path) -> N
 
     assert rows
     assert {row[0] for row in rows} == {gateway.reference.artifact_id}
+
+
+def test_failed_provider_artifact_ids_are_persisted(tmp_path: Path) -> None:
+    gateway = _UnavailableArtifactGateway(ArtifactStore(tmp_path / "artifacts"))
+    repository = SQLiteCaseRepository(tmp_path / "cases.db")
+    app = create_app(InvestigationService(gateway), repository=repository)
+
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/api/v1/investigations",
+            json={
+                "ticker": "BHP",
+                "trade_date": "2026-08-20",
+                "mode": "RECORDED",
+            },
+        ).json()
+        for _ in range(50):
+            report = client.get(
+                f"/api/v1/investigations/{accepted['case_id']}"
+            ).json()
+            if report["status"] == "COMPLETED":
+                break
+            sleep(0.01)
+
+    with sqlite3.connect(repository.database_path) as connection:
+        rows = connection.execute(
+            "SELECT artifact_id FROM provider_calls ORDER BY provider_call_id"
+        ).fetchall()
+
+    assert {row[0] for row in rows} == {
+        item.artifact.artifact_id
+        for item in gateway.outcomes
+        if item.artifact is not None
+    }

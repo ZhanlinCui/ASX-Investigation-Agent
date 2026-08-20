@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
@@ -9,9 +9,11 @@ import httpx
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers import market_adapters
 from asx_investigator.providers.capture import canonical_json_bytes, capture_provider_payload
+from asx_investigator.providers.errors import DataProviderUnavailable
 from asx_investigator.providers.live import LiveToolGateway
 from asx_investigator.providers.market import MarketDataResult
 from asx_investigator.providers.market_adapters import EODHDProvider
+from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.recorded import RecordedToolGateway
 from asx_investigator.settings import Settings
 from asx_investigator.storage.artifacts import ArtifactStore
@@ -136,6 +138,58 @@ async def test_partial_provider_response_is_frozen_before_read_failure(
     }
 
 
+async def test_received_empty_responses_freeze_status_metadata(tmp_path: Path) -> None:
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+
+    async def exercise(status_code: int):
+        provider = EODHDProvider(
+            "test-token",
+            httpx.AsyncClient(
+                transport=httpx.MockTransport(
+                    lambda request: httpx.Response(status_code, content=b"")
+                )
+            ),
+            artifacts,
+        )
+        return await provider.get_daily_bars("BHP", date(2026, 8, 20))
+
+    empty_success = await exercise(204)
+    empty_failure = await exercise(500)
+
+    assert empty_success.error_code == "SCHEMA_INVALID"
+    assert empty_failure.error_code == "HTTP_500"
+    for outcome, status_code in ((empty_success, 204), (empty_failure, 500)):
+        assert outcome.artifact is not None
+        assert json.loads(artifacts.get(outcome.artifact.artifact_id)) == {
+            "body_empty": True,
+            "status_code": status_code,
+        }
+
+
+async def test_redirect_response_is_not_parsed_as_provider_success(tmp_path: Path) -> None:
+    payload = _daily_bar_payload()
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+    provider = EODHDProvider(
+        "test-token",
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(302, json=payload)
+            )
+        ),
+        artifacts,
+    )
+
+    outcome = await provider.get_daily_bars("BHP", date(2026, 8, 20))
+
+    assert outcome.status == ProviderStatus.PERMANENT_FAILURE
+    assert outcome.error_code == "HTTP_302"
+    assert outcome.artifact is not None
+    assert json.loads(artifacts.get(outcome.artifact.artifact_id)) == {
+        "payload": payload,
+        "status_code": 302,
+    }
+
+
 async def test_live_gateway_threads_shared_store_to_corporate_actions(
     tmp_path: Path,
 ) -> None:
@@ -182,6 +236,34 @@ class _ArtifactGateway:
         return result.model_copy(update={"artifact": self.reference})
 
 
+class _UnavailableArtifactGateway:
+    def __init__(self, artifacts: ArtifactStore) -> None:
+        self.delegate = RecordedToolGateway.default()
+        self.outcomes = [
+            ProviderOutcome[list[object]](
+                status=ProviderStatus.RETRYABLE_FAILURE,
+                provider=provider,
+                retrieved_at=datetime.now(UTC),
+                coverage="NONE",
+                error_code="HTTP_503",
+                artifact=capture_provider_payload(
+                    artifacts,
+                    {"provider": provider, "status_code": 503},
+                    "application/json",
+                ),
+            )
+            for provider in ("EODHD", "Marketstack")
+        ]
+
+    def __getattr__(self, name: str):
+        return getattr(self.delegate, name)
+
+    async def get_market_data(self, ticker: str, trade_date: date) -> MarketDataResult:
+        raise DataProviderUnavailable(
+            "all market providers failed", outcomes=self.outcomes
+        )
+
+
 async def test_provider_diagnostics_surface_outcome_artifact_id(tmp_path: Path) -> None:
     gateway = _ArtifactGateway(ArtifactStore(tmp_path / "artifacts"))
 
@@ -202,3 +284,18 @@ async def test_recorded_gateway_outcomes_remain_valid_without_artifacts() -> Non
 
     assert report.provider_diagnostics
     assert all(item.artifact_id is None for item in report.provider_diagnostics)
+
+
+async def test_incomplete_market_report_keeps_failure_artifact_ids(
+    tmp_path: Path,
+) -> None:
+    gateway = _UnavailableArtifactGateway(ArtifactStore(tmp_path / "artifacts"))
+
+    report = await InvestigationService(gateway).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+
+    assert report.outcome == "INCOMPLETE_DATA"
+    assert {item.artifact_id for item in report.provider_diagnostics} == {
+        item.artifact.artifact_id for item in gateway.outcomes if item.artifact is not None
+    }

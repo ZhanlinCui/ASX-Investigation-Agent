@@ -64,7 +64,7 @@ class LiveToolGateway:
             f"https://eodhd.com/api/search/{ticker}",
             params={"api_token": token, "fmt": "json", "limit": 20},
         )
-        if response.status_code >= 400:
+        if not 200 <= response.status_code < 300:
             raise DataProviderUnavailable(
                 f"Instrument provider unavailable: HTTP_{response.status_code}"
             )
@@ -110,7 +110,10 @@ class LiveToolGateway:
             return await MarketDataReconciler(primary, fallback).acquire(ticker, trade_date)
         except MarketDataUnavailable as error:
             codes = ", ".join(item.error_code or str(item.status) for item in error.outcomes)
-            raise DataProviderUnavailable(f"Market data unavailable: {codes}") from error
+            raise DataProviderUnavailable(
+                f"Market data unavailable: {codes}",
+                outcomes=error.outcomes,
+            ) from error
 
     async def get_benchmark_return(self, trade_date: date) -> float | None:
         # Return None if no benchmark entitlement is configured: downstream
@@ -167,7 +170,7 @@ class LiveToolGateway:
                 "include_raw_content": "markdown",
             },
         )
-        if response.status_code >= 400:
+        if not 200 <= response.status_code < 300:
             raise DataProviderUnavailable(
                 f"Discovery provider unavailable: HTTP_{response.status_code}"
             )

@@ -60,11 +60,25 @@ After attaching canonical partial-response metadata to the retryable failure out
 1 passed in 0.04s
 ```
 
+### Independent-review RED/GREEN cycle
+
+The read-only security review found no Critical issues and three valid Important failure-path gaps: received empty responses had no artifact, 3xx responses could be parsed as success, and all-market-providers-failed artifacts were lost from the incomplete report. Regression tests were added before fixes:
+
+```text
+4 failed, 1 warning in 1.10s
+```
+
+After the focused fixes, the identical four-test command produced:
+
+```text
+4 passed, 1 warning in 0.27s
+```
+
 ## Implementation
 
-- Added bounded capture-before-parse for all Live JSON requests. Successful JSON is canonicalized through Task 1's `capture_provider_payload`, then parsed from stored bytes. HTTP error bodies, invalid JSON, oversized responses, and partial response-read failures receive canonical metadata artifacts. Connect failures with no response bytes retain `artifact=None`.
+- Added bounded capture-before-parse for all Live JSON requests. Successful JSON is canonicalized through Task 1's `capture_provider_payload`, then parsed from stored bytes. HTTP error bodies, empty received responses, invalid JSON, redirects/non-2xx statuses, oversized responses, and partial response-read failures receive canonical metadata artifacts. Connect failures with no HTTP response retain `artifact=None`.
 - Required all Live market and corporate-action adapters to receive an `ArtifactStore`, and threaded the app's store through `LiveToolGateway` into EODHD and Marketstack adapters.
-- Added artifact IDs to `ProviderCallDiagnostic` construction; the existing repository path now persists those IDs. Recorded outcomes remain valid without artifacts.
+- Added artifact IDs to `ProviderCallDiagnostic` construction; the existing repository path now persists those IDs. All-provider failure outcomes are carried through `DataProviderUnavailable` into incomplete-market diagnostics instead of being reduced to an error string. Recorded outcomes remain valid without artifacts.
 - Reworked app construction to create one shared `ArtifactStore` for Live provider payloads and uploaded/fetched source content.
 - Added `PublicAddressConnector` and a production `HttpxPublicAddressConnector`. Source ingestion validates the scheme/host, resolves and rejects the entire non-global address set immediately before each hop, disables environment proxy use in the production client, disables automatic redirects, verifies the response peer from `network_stream.server_addr`, and fails closed on absent, non-global, or mismatched peers before reading response content.
 - Revalidates every absolute redirect target and permits at most three redirects. The existing 20 MB streaming cap and PDF/HTML/plain-text MIME policy remain in force. Existing PDF page and extracted-text caps were not changed.
@@ -78,6 +92,7 @@ Production:
 
 - `src/asx_investigator/providers/live.py`
 - `src/asx_investigator/providers/market_adapters.py`
+- `src/asx_investigator/providers/errors.py`
 - `src/asx_investigator/evidence/ingestion.py`
 - `src/asx_investigator/api/app.py`
 - `src/asx_investigator/investigation/service.py`
@@ -109,7 +124,7 @@ Required focused gate:
   src/asx_investigator/api
 ```
 
-Observed: focused tests passed and scoped Ruff passed. The expanded relevant regression produced `32 passed, 1 warning`.
+Observed: focused tests passed and scoped Ruff passed. Before review fixes, the expanded relevant regression produced `32 passed, 1 warning`.
 
 Fresh full verification immediately before the report/commit:
 
@@ -128,12 +143,29 @@ All checks passed!
 
 `git diff --check` exited 0 with no output.
 
+Fresh verification after resolving every Important independent-review finding:
+
+```bash
+../../.venv/bin/python -m pytest -q && \
+../../.venv/bin/ruff check src tests && \
+git diff --check
+```
+
+Observed:
+
+```text
+115 passed, 6 warnings in 1.69s
+All checks passed!
+```
+
+`git diff --check` again exited 0 with no output.
+
 ## Self-review
 
 - Capture ordering: provider-specific parsing only consumes the canonical artifact copy, not `response.json()`.
-- Failure provenance: HTTP failures with bodies, invalid JSON, over-limit responses, and partial reads attach bounded canonical artifacts; a connect failure with no response does not fabricate one.
+- Failure provenance: HTTP failures with bodies, empty received responses, invalid JSON, redirects, over-limit responses, and partial reads attach bounded canonical artifacts; a connect failure with no response does not fabricate one.
 - Shared ownership: Live tools and `SourceIngestor` use the identical app-owned `ArtifactStore` object.
-- Diagnostics: both daily-bar outcomes and corporate-action outcomes copy their artifact IDs into report diagnostics, and the API integration test verifies SQLite persistence.
+- Diagnostics: daily-bar and corporate-action outcomes copy their artifact IDs into report diagnostics. Both successful and all-providers-failed integration paths verify SQLite persistence.
 - Egress: each redirect is resolved and validated before its connector call. Peer mismatch and absent peer are explicit rejections; non-global peers use the same fail-closed branch.
 - Environment: the production HTTP client is created with `trust_env=False` and `follow_redirects=False`.
 - Policy preservation: `MAX_SOURCE_BYTES` remains exactly 20 MB; MIME types remain PDF/HTML/plain text; the redirect count remains three; parsing caps are unchanged.

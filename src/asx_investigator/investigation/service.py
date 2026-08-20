@@ -43,7 +43,7 @@ from asx_investigator.evidence.validation import validate_claims
 from asx_investigator.market.forensics import calculate_market_move
 from asx_investigator.market.sessions import classify_event, resolve_session
 from asx_investigator.providers.errors import DataProviderUnavailable
-from asx_investigator.providers.outcomes import ProviderStatus
+from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.protocols import InvestigationTools
 
 StageObserver = Callable[[str, str, dict[str, object]], Awaitable[None]]
@@ -101,6 +101,7 @@ class InvestigationService:
                 instrument,
                 str(error),
                 trace,
+                error.outcomes,
             )
         benchmark_return = await self.tools.get_benchmark_return(requested_date)
         market_move = calculate_market_move(market_data.bars, benchmark_return)
@@ -665,6 +666,7 @@ class InvestigationService:
         instrument,
         reason: str,
         trace: list[dict[str, str]],
+        outcomes: list[ProviderOutcome[object]],
     ) -> InvestigationReport:
         gap = CoverageGap(
             gap_id="MARKET_DATA_UNAVAILABLE",
@@ -674,6 +676,22 @@ class InvestigationService:
             impact="The price move cannot be calculated or causally investigated.",
             retryable=False,
         )
+        provider_diagnostics = [
+            ProviderCallDiagnostic(
+                provider=item.provider,
+                operation="daily_bars",
+                status=str(item.status),
+                coverage=item.coverage,
+                retrieved_at=item.retrieved_at,
+                provenance=item.provenance,
+                error_code=item.error_code,
+                source_version=item.source_version,
+                artifact_id=(
+                    item.artifact.artifact_id if item.artifact is not None else None
+                ),
+            )
+            for item in outcomes
+        ]
         return InvestigationReport(
             case_id=str(uuid4()),
             run_id=str(uuid4()),
@@ -697,5 +715,6 @@ class InvestigationService:
             ),
             coverage_gaps=[gap],
             coverage_status="INCOMPLETE_MARKET_DATA",
+            provider_diagnostics=provider_diagnostics,
             trace=trace,
         )

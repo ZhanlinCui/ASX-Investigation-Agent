@@ -94,10 +94,15 @@ async def request_captured_json(
         status_code = response.status_code
 
     if not content:
+        artifact = capture_provider_payload(
+            artifacts,
+            {"body_empty": True, "status_code": status_code},
+            "application/json",
+        )
         return CapturedJsonResponse(
             status_code=status_code,
             payload=None,
-            artifact=None,
+            artifact=artifact,
         )
 
     try:
@@ -111,16 +116,16 @@ async def request_captured_json(
     else:
         frozen_payload = (
             {"payload": decoded, "status_code": status_code}
-            if status_code >= 400
+            if not 200 <= status_code < 300
             else decoded
         )
         parsed_payload = decoded
 
     artifact = capture_provider_payload(artifacts, frozen_payload, "application/json")
     captured = json.loads(artifacts.get(artifact.artifact_id))
-    if status_code < 400 and parsed_payload is not None:
+    if 200 <= status_code < 300 and parsed_payload is not None:
         parsed_payload = captured
-    elif status_code >= 400 and parsed_payload is not None:
+    elif parsed_payload is not None:
         parsed_payload = captured["payload"]
     return CapturedJsonResponse(
         status_code=status_code,
@@ -194,7 +199,7 @@ class EODHDProvider:
             )
         except httpx.HTTPError:
             return self._failure(retrieved_at, "NETWORK_ERROR")
-        if result.status_code >= 400:
+        if not 200 <= result.status_code < 300:
             return self._failure(
                 retrieved_at,
                 f"HTTP_{result.status_code}",
@@ -313,7 +318,7 @@ class MarketstackProvider:
             )
         except httpx.HTTPError:
             return self._failure(retrieved_at, "NETWORK_ERROR")
-        if result.status_code >= 400:
+        if not 200 <= result.status_code < 300:
             return self._failure(
                 retrieved_at,
                 f"HTTP_{result.status_code}",
@@ -436,7 +441,7 @@ class EODHDCorporateActionsProvider:
             )
         except httpx.HTTPError:
             return self._failure(retrieved_at, "NETWORK_ERROR")
-        if response.status_code >= 400:
+        if not 200 <= response.status_code < 300:
             return self._failure(
                 retrieved_at,
                 f"HTTP_{response.status_code}",
