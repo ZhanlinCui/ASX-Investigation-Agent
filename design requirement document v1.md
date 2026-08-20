@@ -1,8 +1,8 @@
 # ASX Investigation Workbench
 ## Product Design Requirement
 
-**Version:** 2.1  
-**Status:** Phase 2 product baseline  
+**Version:** 2.2
+**Status:** Phase 2.8 product baseline; Phase 3 design proposed
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -50,6 +50,16 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - Automatic cross-case learning.
 - Complex evidence-graph authoring.
 - Mobile authoring.
+
+### Proposed for Phase 3
+
+- Assertion-level evidence references between passages and hypotheses.
+- Visible causal mechanism tests and rejected-hypothesis reasons.
+- An append-only investigation ledger with policy and artifact lineage.
+- Calibration sample status for LOW, MEDIUM and HIGH bands.
+- Blind evaluation export without development or sealed labels.
+
+These items are planned behavior. They are not part of the current recorded release until their milestone gates pass.
 
 ## Design direction
 

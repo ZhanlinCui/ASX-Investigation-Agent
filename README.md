@@ -10,7 +10,7 @@ Phase 2 product implementation is complete in recorded mode. P2.8 adds frozen pr
 
 Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
 
-See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap and `docs/phase-plans/phase-02-evidence-complete-live-investigation.md` for the active implementation plan.
+See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap, `docs/phase-plans/phase-02-evidence-complete-live-investigation.md` for the current phase record, and `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md` for the proposed next-stage architecture.
 
 ## Setup
 
