@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asx_investigator.evaluation.gold import grade_gold_cases, load_gold_corpus
-from asx_investigator.evaluation.models import CaseEvaluation, GraderCheck
+from asx_investigator.evaluation.models import CaseEvaluation, GoldCaseManifest, GraderCheck
 
 
 def _case(**updates: object) -> dict[str, object]:
@@ -20,7 +22,7 @@ def _case(**updates: object) -> dict[str, object]:
         "mechanical_expectation": "CHECKED_NO_EVENT",
         "coverage_expectation": "COMPLETE",
         "citation_requirements": ["E1"],
-        "abstention_allowed": False,
+        "abstention_policy": "FORBIDDEN",
     }
     case.update(updates)
     return case
@@ -40,6 +42,15 @@ def test_absent_external_holdout_is_not_run(monkeypatch) -> None:
 
     assert result.status == "NOT_RUN"
     assert result.cases == []
+
+
+def test_gold_manifest_rejects_ambiguous_legacy_abstention_boolean() -> None:
+    legacy = _case()
+    legacy.pop("abstention_policy")
+    legacy["abstention_allowed"] = False
+
+    with pytest.raises(ValueError, match="abstention_allowed"):
+        GoldCaseManifest.model_validate(legacy)
 
 
 def test_gold_manifest_rejects_future_evidence_and_wrong_session(tmp_path: Path) -> None:

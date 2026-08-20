@@ -64,7 +64,13 @@ def select_context_facts(
 
 
 class EvidencePacket(BaseModel):
-    """The bounded assertion-only payload available to the two model calls."""
+    """Case-scoped assertions plus non-causal context held outside model input.
+
+    ``context_facts`` are retained for point-in-time auditability and the
+    deterministic kernel only.  Their free-form values are deliberately not a
+    model input: they cannot become instructions, citations, mechanisms or
+    causal support.
+    """
 
     ticker: str
     case_version_id: str
@@ -86,6 +92,8 @@ class EvidencePacket(BaseModel):
             raise ValueError("Evidence packet assertions must be case-scoped")
         if self.allowed_assertion_ids != assertion_ids:
             raise ValueError("Evidence packet allowed assertion IDs must match its assertions")
+        if set(assertion_ids) & {item.entry_id for item in self.context_facts}:
+            raise ValueError("Evidence packet context IDs cannot overlap assertion IDs")
         if any(item.ticker != self.ticker for item in self.context_facts):
             raise ValueError("Evidence packet context facts must match its ticker")
         if self.context_facts and self.context_as_of is None:
@@ -108,6 +116,29 @@ class EvidencePacket(BaseModel):
         ):
             raise ValueError("Evidence packet context facts exceed the text bound")
         return self
+
+    def model_payload(self) -> dict[str, object]:
+        """Return the only representation permitted in a model prompt.
+
+        Shared issuer memory is intentionally omitted rather than merely
+        labelled.  It is free-form content admitted for deterministic,
+        point-in-time bookkeeping, never evidence or an instruction channel.
+        The stable marker lets the prompt enforce that distinction without
+        exposing a value, source URL, hash or identifier that could be used as
+        a citation.
+        """
+
+        payload = self.model_dump(
+            mode="json",
+            exclude={"context_facts", "context_as_of"},
+        )
+        payload["shared_context_boundary"] = {
+            "scope": "CONTEXT_ONLY",
+            "fact_count": len(self.context_facts),
+            "values_omitted": True,
+            "causal_use_permitted": False,
+        }
+        return payload
 
 
 def build_evidence_packet(

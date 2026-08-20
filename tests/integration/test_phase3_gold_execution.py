@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from asx_investigator.agent.reasoning import ChallengeResult, HypothesisBatch, HypothesisProposal
+from asx_investigator.evaluation import gold as gold_evaluation
 from asx_investigator.evaluation.bundles import (
     FrozenBundleError,
     load_frozen_gold_corpus,
@@ -81,7 +83,7 @@ def _write_development_manifest(
                 "mechanical_expectation": "CHECKED_NO_EVENT",
                 "coverage_expectation": "COMPLETE",
                 "citation_requirements": ["E1"],
-                "abstention_allowed": False,
+                "abstention_policy": "FORBIDDEN",
                 "expected_outcome": expected_outcome,
             }
         ],
@@ -96,7 +98,7 @@ async def test_gold_runner_executes_a_frozen_bundle_not_a_prebuilt_report(
     _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
     corpus = load_frozen_gold_corpus(tmp_path, kind="development")
 
-    result = await execute_gold_corpus(corpus)
+    result = await execute_gold_corpus(corpus, allow_deterministic_fixture=True)
 
     assert result.status == "PASS"
     assert result.cases[0].report.market_move is not None
@@ -113,6 +115,118 @@ async def test_gold_runner_executes_a_frozen_bundle_not_a_prebuilt_report(
         material_errors={"gold-01": False},
     )
     assert records[0].case_id == "gold-01"
+
+
+class FrozenStructuredReasoner:
+    model_configuration = {
+        "provider": "FROZEN_TEST_REASONER",
+        "model": "frozen-test-v1",
+        "structured_calls_max": "2",
+    }
+
+    def __init__(self) -> None:
+        self.generate_calls = 0
+        self.challenge_calls = 0
+
+    async def generate(self, packet):
+        self.generate_calls += 1
+        return HypothesisBatch(
+            hypotheses=[
+                HypothesisProposal(
+                    hypothesis_id="H1",
+                    rank=1,
+                    statement="BHP raised FY26 production guidance before ASX trading opened.",
+                    expected_signature="Positive gap and elevated volume.",
+                    supporting_assertion_ids=["A1"],
+                )
+            ]
+        )
+
+    async def challenge(self, packet, hypotheses):
+        self.challenge_calls += 1
+        return ChallengeResult(
+            leading_hypothesis_id="H1",
+            timing_leakage=False,
+            unsupported_assumptions=[],
+            summary="The supplied assertion is time eligible.",
+        )
+
+
+async def test_gold_execution_requires_a_configured_reasoner_unless_fixture_mode_is_explicit(
+    tmp_path: Path,
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+
+    result = await execute_gold_corpus(corpus)
+
+    assert result.status == "NOT_RUN"
+    assert "configured structured reasoner" in result.reason
+
+
+async def test_gold_execution_records_configured_reasoner_latency_and_known_cost(
+    tmp_path: Path,
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+    reasoner = FrozenStructuredReasoner()
+
+    result = await execute_gold_corpus(
+        corpus,
+        reasoner=reasoner,
+        estimated_cost_aud=0.012,
+    )
+
+    assert result.status == "PASS"
+    assert reasoner.generate_calls == 2
+    assert reasoner.challenge_calls == 2
+    assert result.model_configuration == reasoner.model_configuration
+    assert result.cases[0].latency_ms is not None
+    assert result.cases[0].estimated_cost_aud == 0.012
+
+
+async def test_external_gold_runner_forwards_a_configured_reasoner_and_aud_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+    monkeypatch.setenv("ASX_EVAL_DEVELOPMENT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        gold_evaluation,
+        "load_frozen_gold_corpus",
+        lambda *args, **kwargs: corpus,
+    )
+    reasoner = FrozenStructuredReasoner()
+
+    result = await run_external_gold(
+        "development", reasoner=reasoner, estimated_cost_aud=0.01
+    )
+
+    assert result.status == "PASS"
+    assert result.model_configuration == reasoner.model_configuration
+    assert result.cases[0].estimated_cost_aud == 0.01
+
+
+async def test_external_gold_runner_fails_closed_without_a_nonzero_model_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+    monkeypatch.setenv("ASX_EVAL_DEVELOPMENT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        gold_evaluation,
+        "load_frozen_gold_corpus",
+        lambda *args, **kwargs: corpus,
+    )
+
+    result = await run_external_gold("development", reasoner=FrozenStructuredReasoner())
+
+    assert result.status == "NOT_RUN"
+    assert "known non-zero per-case model cost" in (result.reason or "")
 
 
 async def test_missing_external_holdout_is_not_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,6 +354,18 @@ def test_blind_holdout_accepts_only_label_free_bound_provenance(tmp_path: Path) 
 
     assert corpus.manifests == {}
     assert corpus.bundles[0].metadata_artifact_id == artifacts["metadata"]
+
+
+def test_blind_holdout_rejects_serialized_labels_inside_evidence_artifacts(tmp_path: Path) -> None:
+    root = tmp_path / "gold-01"
+    artifacts = write_bundle(
+        root,
+        artifact_bytes=b'{"driver_labels":["ISSUER_DISCLOSURE"],"prebuilt_report":{}}',
+    )
+    _write_holdout_manifest(tmp_path, metadata_artifact_id=artifacts["metadata"])
+
+    with pytest.raises(FrozenBundleError, match="serialized JSON|sealed labels"):
+        load_frozen_gold_corpus(tmp_path, kind="holdout")
 
 
 def test_blind_holdout_rejects_unbound_corpus_policy_schema(tmp_path: Path) -> None:

@@ -127,8 +127,9 @@ _HOLDOUT_FORBIDDEN_KEYS = {
     "eligible_evidence_ids",
     "mechanical_expectation",
     "coverage_expectation",
-    "abstention_allowed",
+    "abstention_policy",
 }
+_HOLDOUT_EVIDENCE_MIME_TYPES = {"text/plain", "text/html"}
 
 
 class FrozenBundleError(ValueError):
@@ -446,6 +447,7 @@ class FrozenCaseBundle:
     corporate_actions: Mapping[str, Any]
     evidence_coverage_complete: bool
     documents: tuple[_DocumentDeclaration, ...]
+    sealed_holdout: bool = False
 
     @property
     def instrument(self) -> InstrumentIdentity:
@@ -591,10 +593,24 @@ class FrozenCaseBundle:
 
     def _evidence_item(self, document: _DocumentDeclaration) -> EvidenceItem:
         artifact = self._read_artifact(document.artifact_id, document.mime_type)
+        if self.sealed_holdout and document.mime_type not in _HOLDOUT_EVIDENCE_MIME_TYPES:
+            raise FrozenBundleError("sealed holdout evidence MIME type is not allowed")
         try:
             passage = artifact.content.decode("utf-8")
         except UnicodeDecodeError as error:
             raise FrozenBundleError("document artifact must be UTF-8 text") from error
+        if self.sealed_holdout:
+            try:
+                serialized = json.loads(passage)
+            except json.JSONDecodeError:
+                serialized = None
+            if serialized is not None:
+                _reject_holdout_labels_or_reports(
+                    serialized, label="sealed holdout evidence artifact"
+                )
+                raise FrozenBundleError(
+                    "sealed holdout evidence cannot contain serialized JSON"
+                )
         raw = document.metadata
         if raw.get("content_hash") != artifact.artifact_id:
             raise FrozenBundleError(
@@ -790,6 +806,7 @@ def load_frozen_case_bundle(
         corporate_actions=cast(Mapping[str, Any], _freeze(corporate_actions)),
         evidence_coverage_complete=evidence["coverage_complete"],
         documents=tuple(documents),
+        sealed_holdout=sealed_holdout,
     )
     # Force all content and outcome/evidence metadata validation at admission. The
     # gateway repeats it on access to detect mutation after the initial load.
@@ -889,6 +906,17 @@ def load_frozen_gold_corpus(
                 )
             manifests[case_id] = manifest
         bundles.append(bundle)
+    if (
+        kind == "development"
+        and enforce_release_case_count
+        and not any(
+            manifest.abstention_policy == "REQUIRED"
+            for manifest in manifests.values()
+        )
+    ):
+        raise FrozenBundleError(
+            "development corpus must include at least one REQUIRED abstention case"
+        )
     return FrozenGoldCorpus(
         kind=kind,
         corpus_version=corpus_version,

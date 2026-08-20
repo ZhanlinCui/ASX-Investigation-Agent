@@ -335,6 +335,7 @@ class InvestigationKernel:
                     title=f"Effective {action.action_type.lower()}",
                     passage=passage,
                     content_hash=hashlib.sha256(passage.encode()).hexdigest(),
+                    evidence_kind="CORPORATE_ACTION",
                     locator=action.source_id,
                 )
             )
@@ -422,7 +423,12 @@ class InvestigationKernel:
             await completed("extract_exact_passages")
         coverage_complete = state.coverage_complete
         coverage_gaps = list(state.coverage_gaps or [])
-        effective_coverage_complete = coverage_complete and not refinement_limited
+        # A no-catalyst outcome means all required investigation capabilities
+        # were observed. Corporate actions are one of those capabilities: a
+        # missing or partial response cannot be papered over by issuer coverage.
+        effective_coverage_complete = (
+            coverage_complete and corporate_action_coverage and not refinement_limited
+        )
 
         if not state.has_completed("assemble_evidence_packet"):
             state.packet = None
@@ -498,6 +504,13 @@ class InvestigationKernel:
             if selected
             else []
         )
+        if not corporate_action_coverage:
+            # Preserve the model's bounded candidate in the trace, but do not
+            # compile or publish a cause while a required mechanical check is
+            # unavailable. This is an incomplete investigation, not a failed
+            # search for a catalyst.
+            selected = None
+            selected_support = []
         if selected:
             assertion_by_id = {item.assertion_id: item for item in assertions}
             selected_assertions = [
@@ -543,14 +556,19 @@ class InvestigationKernel:
             claim = None
         if not selected:
             summary = (
-                "No contemporaneous primary evidence was found after complete disclosure "
+                "No contemporaneous primary evidence was found after complete required "
                 "coverage checks."
                 if not causal and effective_coverage_complete
+                else "The investigation is incomplete because a required provider or evidence "
+                "coverage check is unavailable."
+                if not corporate_action_coverage
                 else "The available evidence cannot support a validated causal explanation."
             )
             claim = Claim(claim_id="C1", claim_type=ClaimType.UNRESOLVED, text=summary)
             outcome = (
-                InvestigationOutcome.NO_IDENTIFIABLE_CATALYST
+                InvestigationOutcome.INCOMPLETE_DATA
+                if not corporate_action_coverage
+                else InvestigationOutcome.NO_IDENTIFIABLE_CATALYST
                 if not causal and effective_coverage_complete and reasoning_error is None
                 else InvestigationOutcome.INSUFFICIENT_EVIDENCE
             )
@@ -698,7 +716,9 @@ class InvestigationKernel:
             coverage_gaps=coverage_gaps,
             conflicts=market_data.conflicts,
             coverage_status=(
-                "COMPLETE"
+                "INCOMPLETE_REQUIRED_PROVIDER"
+                if not corporate_action_coverage
+                else "COMPLETE"
                 if effective_coverage_complete
                 else "SCOPED_REFINEMENT"
                 if refinement_limited
@@ -861,7 +881,11 @@ class InvestigationKernel:
         evidence: list[EvidenceItem], session: TradingSession
     ) -> list[EvidenceItem]:
         eligible: list[EvidenceItem] = []
-        for item in evidence:
+        for raw_item in evidence:
+            try:
+                item = EvidenceItem.model_validate(raw_item.model_dump(mode="python"))
+            except ValueError as error:
+                raise ValueError("Evidence timestamps must be timezone-aware") from error
             timing = classify_event(item.published_at, session)
             if item.role == EvidenceRole.CAUSAL_INPUT and not timing.eligible_same_day_cause:
                 item = item.model_copy(update={"role": EvidenceRole.RETROSPECTIVE_CONTEXT})
@@ -884,7 +908,15 @@ class InvestigationKernel:
 
         unique: list[EvidenceItem] = []
         positions: dict[str, int] = {}
+        identities: dict[str, dict[str, object]] = {}
         for item in evidence:
+            identity = item.model_dump(mode="json")
+            prior_identity = identities.get(item.evidence_id)
+            if prior_identity is not None and prior_identity != identity:
+                raise ValueError(
+                    "evidence ID collision has conflicting frozen content or metadata"
+                )
+            identities[item.evidence_id] = identity
             position = positions.get(item.content_hash)
             if position is None:
                 positions[item.content_hash] = len(unique)

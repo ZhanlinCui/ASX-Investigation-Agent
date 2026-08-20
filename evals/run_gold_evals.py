@@ -14,9 +14,11 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from asx_investigator.evaluation.gold import run_external_gold  # noqa: E402
 
 
-async def main(output_format: str) -> None:
+async def main(output_format: str, estimated_case_cost_aud: float | None) -> None:
     reports = {
-        corpus: await run_external_gold(corpus)
+        corpus: await run_external_gold(
+            corpus, estimated_cost_aud=estimated_case_cost_aud
+        )
         for corpus in ("development", "holdout")
     }
     payload = {corpus: result.model_dump(mode="json") for corpus, result in reports.items()}
@@ -39,4 +41,16 @@ async def main(output_format: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--format", choices=["json", "markdown"], default="json")
-    asyncio.run(main(parser.parse_args().format))
+    parser.add_argument(
+        "--estimated-case-cost-aud",
+        type=float,
+        default=None,
+        help=(
+            "Audited non-zero model cost per executed case in AUD. Required for an "
+            "external agent release run; omission leaves that gate NOT_RUN."
+        ),
+    )
+    arguments = parser.parse_args()
+    if arguments.estimated_case_cost_aud is not None and arguments.estimated_case_cost_aud <= 0:
+        parser.error("--estimated-case-cost-aud must be greater than zero")
+    asyncio.run(main(arguments.format, arguments.estimated_case_cost_aud))

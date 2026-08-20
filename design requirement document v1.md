@@ -2,7 +2,7 @@
 ## Product Design Requirement
 
 **Version:** 2.5
-**Status:** Phase 3 complete for the recorded-only release candidate; external evaluation and Live gates remain open
+**Status:** Phase 3 implementation delivered in the recorded-only release candidate; external evaluation and Live release gates OPEN (`NOT_RUN`)
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -56,7 +56,7 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - Assertion-level evidence references between passages and hypotheses.
 - Visible causal mechanism tests and rejected-hypothesis reasons.
 - An append-only investigation ledger with policy and artifact lineage.
-- Shared issuer reference facts admitted as bounded, point-in-time `CONTEXT_ONLY` context. They cannot support a hypothesis or claim, and prior case conclusions and holdout labels are rejected.
+- Shared issuer reference facts admitted as bounded, point-in-time `CONTEXT_ONLY` context. Raw values are excluded from Gemini evidence packets and cannot support a hypothesis or claim; prior case conclusions and holdout labels are rejected.
 - Frozen, hash-verified gold bundles that run through the production investigation path. Blind holdout reports never load or display sealed labels.
 - Reviewed ordinal calibration metadata and release gates. Confidence remains a band, not a probability; missing external gold evaluation remains visibly `NOT_RUN`.
 - Compact audited decision surfaces for exact evidence assertions, mechanism tests, decision-ledger stage and artifact hashes, and ordinal calibration samples.

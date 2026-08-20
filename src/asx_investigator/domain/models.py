@@ -113,10 +113,17 @@ class EvidenceItem(BaseModel):
     title: str
     passage: str
     content_hash: str
+    evidence_kind: Literal["DOCUMENT", "CORPORATE_ACTION"] = "DOCUMENT"
     page: int | None = None
     locator: str | None = None
     supports_claim_ids: list[str] = Field(default_factory=list)
     contradicts_claim_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> EvidenceItem:
+        if self.published_at.tzinfo is None or self.retrieved_at.tzinfo is None:
+            raise ValueError("Evidence timestamps must be timezone-aware")
+        return self
 
 
 class EvidenceAssertion(BaseModel):
@@ -138,6 +145,12 @@ class EvidenceAssertion(BaseModel):
     normalized_entities: list[str] = Field(default_factory=list)
     normalized_values: dict[str, float] = Field(default_factory=dict)
     contradicting_assertion_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> EvidenceAssertion:
+        if self.published_at.tzinfo is None or self.retrieved_at.tzinfo is None:
+            raise ValueError("Evidence assertion timestamps must be timezone-aware")
+        return self
 
 
 class MechanismTest(BaseModel):

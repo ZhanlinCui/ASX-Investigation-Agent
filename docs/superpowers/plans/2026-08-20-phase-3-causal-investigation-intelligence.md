@@ -1,5 +1,7 @@
 # Phase 3 Causal Investigation Intelligence Implementation Plan
 
+> **Execution status:** Historical implementation plan. P3.0 through P3.6 are implemented in the recorded release candidate. The Phase 3 development gold, sealed holdout and credentialed Live release gates remain OPEN and `NOT_RUN`; the unchecked historical steps below are not current release status.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn the recorded Phase 2.8 agent into an assertion-bound causal investigation system with isolated memory and production-path evaluation for unseen ASX cases.

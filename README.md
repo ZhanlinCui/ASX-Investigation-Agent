@@ -6,7 +6,7 @@ The product does not recommend trades or predict prices.
 
 ## Current release
 
-Phase 2 product implementation is complete in recorded mode. Phase 3 is complete: P3.0–P3.2 establish assertion-bound reasoning, mechanism tests and an append-only ledger; P3.3 isolates point-in-time shared memory; P3.4 executes frozen gold bundles through the production path; P3.5 adds ordinal calibration metadata and release gates; and P3.6 exposes audited causal decisions in JSON, Markdown and the workbench. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Live completion remains gated by provider credentials and independently adjudicated point-in-time evaluation data. Fresh recorded-release results are in `evals/results/phase3-evaluation.md`.
+Phase 2 and Phase 3 implementation are delivered in recorded mode. Phase 3 provides assertion-bound reasoning, deterministic mechanism tests, an append-only ledger, point-in-time shared-memory isolation, frozen gold execution, ordinal calibration gates, and audited JSON, Markdown and workbench decisions. Phase 3 is not release-approved: the external development gold corpus, sealed holdout and credentialed Live gates remain OPEN and `NOT_RUN`. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Fresh recorded-release results are in `evals/results/phase3-evaluation.md`.
 
 Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
 
@@ -53,7 +53,7 @@ The workbench can attach PDF, HTML or text sources up to 20 MB. URL ingestion is
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check src tests evals
 .venv/bin/python evals/run_recorded_evals.py
-.venv/bin/python evals/run_gold_evals.py --format markdown
+.venv/bin/python evals/run_gold_evals.py --format markdown --estimated-case-cost-aud 0.01
 cd web && pnpm test && pnpm build
 ```
 

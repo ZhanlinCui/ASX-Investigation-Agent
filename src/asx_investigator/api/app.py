@@ -41,12 +41,12 @@ from asx_investigator.investigation.checkpoints import (
     InvestigationState,
 )
 from asx_investigator.investigation.service import InvestigationService
-from asx_investigator.market.sessions import resolve_case_context_as_of
+from asx_investigator.market.sessions import SYDNEY, resolve_case_context_as_of
 from asx_investigator.providers.capture import canonical_json_bytes
 from asx_investigator.providers.live import LiveToolGateway
 from asx_investigator.providers.recorded import RecordedToolGateway
 from asx_investigator.report.markdown import render_markdown
-from asx_investigator.report.public import public_report_payload
+from asx_investigator.report.public import public_report_payload, public_timestamp
 from asx_investigator.settings import Settings
 from asx_investigator.storage.artifacts import ArtifactStore
 from asx_investigator.storage.memory import SharedMemoryRepository
@@ -159,7 +159,7 @@ def public_event_payload(event: object) -> dict[str, object]:
         "event_type": getattr(event, "event_type"),
         "stage": getattr(event, "stage"),
         "status": getattr(event, "status"),
-        "created_at": getattr(event, "created_at").isoformat(),
+        "created_at": public_timestamp(getattr(event, "created_at")),
     }
 
 
@@ -784,7 +784,20 @@ def create_app(
             authority="USER_SUPPLIED_OFFICIAL" if is_official else "USER_SUPPLIED",
             passages=[item.model_dump() for item in passages],
         )
-        return SourceAccepted.model_validate(record)
+        # Source records are stored in canonical UTC.  Project the response at the
+        # public API boundary so upload/fetch metadata obeys the same AEST/AEDT
+        # contract as reports and event streams.
+        return SourceAccepted.model_validate(
+            {
+                **record,
+                "published_at": datetime.fromisoformat(
+                    str(record["published_at"])
+                ).astimezone(SYDNEY),
+                "retrieved_at": datetime.fromisoformat(
+                    str(record["retrieved_at"])
+                ).astimezone(SYDNEY),
+            }
+        )
 
     @app.post(
         "/api/v1/sources/upload",

@@ -33,6 +33,15 @@ def _observed(day: date) -> date:
 def _asx_holidays(year: int) -> set[date]:
     easter = _easter_sunday(year)
     kings_birthday = date(year, 6, 1) + timedelta(days=(7 - date(year, 6, 1).weekday()) % 7 + 7)
+    christmas = date(year, 12, 25)
+    boxing_day = date(year, 12, 26)
+    christmas_holidays = (
+        {date(year, 12, 27), date(year, 12, 28)}
+        if christmas.weekday() == 5
+        else {date(year, 12, 26), date(year, 12, 27)}
+        if christmas.weekday() == 6
+        else {_observed(christmas), _observed(boxing_day)}
+    )
     return {
         _observed(date(year, 1, 1)),
         _observed(date(year, 1, 26)),
@@ -40,8 +49,7 @@ def _asx_holidays(year: int) -> set[date]:
         easter + timedelta(days=1),
         _observed(date(year, 4, 25)),
         kings_birthday,
-        _observed(date(year, 12, 25)),
-        _observed(date(year, 12, 26)),
+        *christmas_holidays,
     }
 
 
@@ -53,6 +61,15 @@ def _adjacent_session(value: date, direction: int) -> date:
     candidate = value + timedelta(days=direction)
     while not _is_trading_day(candidate):
         candidate += timedelta(days=direction)
+    return candidate
+
+
+def _last_trading_day_before(value: date) -> date:
+    """Return the actual session before a holiday or year boundary."""
+
+    candidate = value - timedelta(days=1)
+    while not _is_trading_day(candidate):
+        candidate -= timedelta(days=1)
     return candidate
 
 
@@ -70,7 +87,10 @@ def resolve_session(trade_date: date) -> TradingSession:
             previous_session=previous_session,
             next_session=next_session,
         )
-    is_early_close = trade_date.month == 12 and trade_date.day in {24, 31}
+    is_early_close = trade_date in {
+        _last_trading_day_before(date(trade_date.year, 12, 25)),
+        _last_trading_day_before(date(trade_date.year + 1, 1, 1)),
+    }
     close_time = time(14, 10) if is_early_close else time(16, 0)
     return TradingSession(
         trade_date=trade_date,

@@ -17,7 +17,7 @@
       "mechanical_expectation": "CHECKED_NO_EVENT",
       "coverage_expectation": "COMPLETE",
       "citation_requirements": ["E1"],
-      "abstention_allowed": false,
+      "abstention_policy": "FORBIDDEN",
       "expected_outcome": "EXPLAINED"
     }
   ]

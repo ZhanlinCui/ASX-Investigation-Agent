@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -108,13 +108,22 @@ class GoldCaseManifest(BaseModel):
     mechanical_expectation: str
     coverage_expectation: str
     citation_requirements: list[str] = Field(default_factory=list)
-    abstention_allowed: bool
+    abstention_policy: Literal["REQUIRED", "ALLOWED", "FORBIDDEN"]
     expected_outcome: Literal[
         "EXPLAINED",
         "NO_IDENTIFIABLE_CATALYST",
         "INSUFFICIENT_EVIDENCE",
         "INCOMPLETE_DATA",
     ] = "EXPLAINED"
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_abstention_boolean(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "abstention_allowed" in value:
+            raise ValueError(
+                "abstention_allowed is ambiguous; use typed abstention_policy"
+            )
+        return value
 
 
 class GoldCorpusLoadResult(BaseModel):
@@ -148,6 +157,8 @@ class GoldExecutionCase(BaseModel):
     case_id: str
     report: InvestigationReport
     evaluation: CaseEvaluation | None = None
+    latency_ms: int | None = Field(default=None, ge=0)
+    estimated_cost_aud: float | None = Field(default=None, ge=0)
 
 
 class GoldExecutionReport(BaseModel):
@@ -157,3 +168,4 @@ class GoldExecutionReport(BaseModel):
     cases: list[GoldExecutionCase] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     reason: str | None = None
+    model_configuration: dict[str, str] = Field(default_factory=dict)

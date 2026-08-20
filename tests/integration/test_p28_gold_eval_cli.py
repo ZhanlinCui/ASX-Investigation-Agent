@@ -16,3 +16,24 @@ def test_gold_eval_cli_reports_not_run_without_external_corpus() -> None:
 
     payload = json.loads(completed.stdout)
     assert payload["holdout"]["status"] == "NOT_RUN"
+
+
+def test_gold_eval_cli_accepts_an_explicit_nonzero_aud_model_cost() -> None:
+    root = Path(__file__).resolve().parents[2]
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "evals/run_gold_evals.py",
+            "--format",
+            "json",
+            "--estimated-case-cost-aud",
+            "0.01",
+        ],
+        cwd=root,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["development"]["status"] == "NOT_RUN"

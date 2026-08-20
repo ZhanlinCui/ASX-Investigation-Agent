@@ -1,7 +1,7 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 21 August 2026
-**Product stage:** Phase 3 complete; recorded-only release candidate; external evaluation and Live gates open
+**Product stage:** Phase 3 implementation delivered in the recorded-only release candidate; external evaluation and Live release gates OPEN (`NOT_RUN`)
 
 **Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
 **Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
@@ -71,7 +71,7 @@ The proposed sequence is:
 5. publish calibration counts and release gates;
 6. close credentialed Live evidence and workbench gates.
 
-P3.0 completed the domain contract and documentation baseline. P3.1 completed the typed investigation kernel and append-only decision ledger. P3.2 binds causal reasoning and published claims to exact evidence assertions. P3.3 admits only bounded, point-in-time issuer reference facts as non-causal context; it rejects case conclusions and holdout data, and keeps context outside assertions, mechanisms, claims and citations. P3.4 executes hash-verified frozen gold bundles through the production path and produces blind holdout reports without loading sealed labels. P3.5 adds reviewed ordinal calibration metadata and deterministic release gates. P3.6 publishes audited assertion, mechanism, ledger and calibration views in JSON, Markdown and the workbench. The current runnable release remains recorded-only; all external gates remain `NOT_RUN`. See `evals/results/phase3-evaluation.md` for the fresh release record.
+P3.0 through P3.6 are implemented in the recorded release candidate: the domain contract, typed investigation kernel, assertion-bound reasoning, non-causal shared-memory admission, frozen gold execution path, ordinal calibration gates, and audited workbench surfaces are all delivered in code. This is not a Phase 3 release approval. The development gold corpus, sealed holdout and credentialed Live validation gates remain OPEN and `NOT_RUN`. See `evals/results/phase3-evaluation.md` for the fresh release record.
 
 ## Architecture boundaries
 
@@ -108,7 +108,7 @@ Provider cache is not memory. It has a source, retrieval time, expiry and conten
 
 ## Evaluation policy
 
-Development, regression and sealed holdout cases are separated. Gold labels record the evidence cutoff, leading driver, acceptable alternatives, prohibited future evidence, mechanical flags, coverage expectation and whether abstention is acceptable.
+Development, regression and sealed holdout cases are separated. Gold labels record the evidence cutoff, leading driver, acceptable alternatives, prohibited future evidence, mechanical flags, coverage expectation and a typed `REQUIRED`, `ALLOWED` or `FORBIDDEN` abstention policy.
 
 Deterministic graders own time, session, citation, numeric and provider-failure checks. A model judge may help classify failures but cannot override a hard gate or a human label.
 

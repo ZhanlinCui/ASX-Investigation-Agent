@@ -46,6 +46,11 @@ _PARTIAL_DISCLOSURE_COVERAGE_STATUSES = {
     "PARTIAL_DISCLOSURE_COVERAGE",
     "SCOPED_REFINEMENT",
 }
+_REQUIRED_PROVIDER_CAPABILITIES = {
+    "market_data",
+    "issuer_disclosures",
+    "corporate_actions",
+}
 
 
 def grade_report(
@@ -122,7 +127,10 @@ def grade_report(
         top_two_labels & set([*manifest.driver_labels, *manifest.acceptable_alternatives])
     )
     provider_semantics_ok = not (
-        any(gap.capability == "market_data" for gap in report.coverage_gaps)
+        any(
+            gap.capability in _REQUIRED_PROVIDER_CAPABILITIES
+            for gap in report.coverage_gaps
+        )
         and str(report.outcome) == "NO_IDENTIFIABLE_CATALYST"
     )
     assertion_integrity_ok, assertion_detail = _assertion_integrity(report, material)
@@ -276,7 +284,22 @@ def evaluate_release_gates(
     proportions: dict[str, float] = {}
     failures: list[str] = []
     for metric in (*safety_metrics, *behavioral_metrics):
-        values = [record.checks[metric] for record in records if metric in record.checks]
+        eligible_records = records
+        if metric in _REQUIRED_ATTRIBUTION_METRICS:
+            # Required-abstention manifests are safety tests for abstention, not
+            # answerable attribution observations. Their grade report keeps the
+            # raw top-1/top-2 checks for auditability, while release denominators
+            # exclude them so an abstention cannot manufacture attribution pass.
+            eligible_records = [
+                record
+                for record in records
+                if "required_abstention" not in record.checks
+            ]
+        values = [
+            record.checks[metric]
+            for record in eligible_records
+            if metric in record.checks
+        ]
         raw_counts[metric] = {"passed": sum(values), "failed": len(values) - sum(values)}
         denominators[metric] = len(values)
         proportions[metric] = sum(values) / len(values) if values else 0.0
@@ -307,7 +330,9 @@ def evaluate_release_gates(
         failures.append("top_1 is below the 75% threshold")
     if proportions["top_2"] < 0.90 and denominators["top_2"]:
         failures.append("top_2 is below the 90% threshold")
-    if proportions["required_abstention"] < 1.0 and denominators["required_abstention"]:
+    if denominators["required_abstention"] == 0:
+        failures.append("required_abstention has no eligible cases")
+    elif proportions["required_abstention"] < 1.0:
         failures.append("required_abstention is below the 100% threshold")
     false_abstention_rate = 1.0 - proportions["false_abstention"]
     if false_abstention_rate > 0.20 and denominators["false_abstention"]:

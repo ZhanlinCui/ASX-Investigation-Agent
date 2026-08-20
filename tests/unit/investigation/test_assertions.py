@@ -48,7 +48,15 @@ def test_assertions_are_extractable_and_case_scoped() -> None:
 
 def test_mechanism_tests_only_classify_factual_assertions() -> None:
     assertions = build_assertions(
-        [issuer_evidence("M1", "SPLIT was effective on 2026-08-20.")],
+        [
+            issuer_evidence("M1", "SPLIT was effective on 2026-08-20.").model_copy(
+                update={
+                    "source_name": "Corporate action provider",
+                    "authority": "APPROVED_OFFICIAL",
+                    "evidence_kind": "CORPORATE_ACTION",
+                }
+            )
+        ],
         case_version_id="v1",
         session=resolve_session(date(2026, 8, 20)),
     )

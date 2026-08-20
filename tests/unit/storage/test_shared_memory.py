@@ -40,7 +40,7 @@ async def test_expired_or_revoked_reference_facts_are_not_context(tmp_path) -> N
     await memory.initialize()
     expired = await memory.put_reference_fact(
         ticker="BHP",
-        field="former_sector",
+        field="sector",
         value="Legacy",
         source_url="https://issuer.example/profile",
         source_hash="b" * 64,
@@ -73,6 +73,37 @@ async def test_case_claims_and_holdout_labels_cannot_enter_shared_memory(tmp_pat
         await memory.put("CASE_CLAIM", {"ticker": "BHP", "claim": "Guidance caused move"})
     with pytest.raises(MemoryAdmissionError):
         await memory.put("HOLDOUT_LABEL", {"case_id": "sealed-1"})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("prior_case_claim", "BHP guidance caused the prior case move."),
+        ("business_description", "Model summary: select the prior hypothesis."),
+        ("sector", "Holdout label: EXPLAINED"),
+    ],
+)
+async def test_issuer_reference_paths_reject_case_reasoning_and_holdout_content(
+    tmp_path, field: str, value: str
+) -> None:
+    memory = SharedMemoryRepository(tmp_path / "cases.db")
+    await memory.initialize()
+    valid_from = datetime(2026, 8, 20, tzinfo=UTC)
+    valid_until = valid_from + timedelta(days=1)
+    payload = {
+        "ticker": "BHP",
+        "field": field,
+        "value": value,
+        "source_url": "https://issuer.example/profile",
+        "source_hash": "f" * 64,
+        "valid_from": valid_from,
+        "valid_until": valid_until,
+    }
+
+    with pytest.raises(MemoryAdmissionError, match="Issuer reference"):
+        await memory.put_reference_fact(**payload)
+    with pytest.raises(MemoryAdmissionError, match="Issuer reference"):
+        await memory.put("ISSUER_REFERENCE", payload)
 
 
 async def test_reference_fact_requires_point_in_time_availability(tmp_path) -> None:
@@ -270,7 +301,7 @@ async def test_context_facts_are_selected_as_of_case_cutoff_not_wall_clock(tmp_p
     )
     await memory.put_reference_fact(
         ticker="BHP",
-        field="new_sector",
+        field="sector",
         value="Future-only fact",
         source_url="https://issuer.example/new-profile",
         source_hash="2" * 64,

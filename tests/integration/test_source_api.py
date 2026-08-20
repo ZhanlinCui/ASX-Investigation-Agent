@@ -1,10 +1,24 @@
 from time import sleep
 
+import httpx
 from fastapi.testclient import TestClient
 
 from asx_investigator.api.app import create_app
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers.recorded import RecordedToolGateway
+
+
+class _StaticPublicConnector:
+    """Return a public text source without making a network call in API tests."""
+
+    async def get(self, url: httpx.URL, allowed_addresses: set[str]) -> httpx.Response:
+        del allowed_addresses
+        return httpx.Response(
+            200,
+            content=b"Issuer update.",
+            headers={"content-type": "text/plain"},
+            request=httpx.Request("GET", url),
+        )
 
 
 def test_uploaded_text_is_frozen_added_to_case_and_opened_as_exact_passage() -> None:
@@ -51,6 +65,48 @@ def test_uploaded_text_is_frozen_added_to_case_and_opened_as_exact_passage() -> 
     assert passage.status_code == 200
     assert passage.json()["passage"] == "Production guidance increased."
     assert passage.json()["locator"] == "block:1"
+
+
+def test_upload_projects_public_source_timestamps_to_aedt() -> None:
+    app = create_app(InvestigationService(RecordedToolGateway.default()))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/sources/upload",
+            data={
+                "title": "Summer source",
+                "published_at": "2026-01-15T00:00:00+00:00",
+            },
+            files={"file": ("source.txt", b"Issuer update.", "text/plain")},
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["published_at"].endswith("+11:00")
+    assert not payload["retrieved_at"].endswith("+00:00")
+
+
+def test_fetch_projects_public_source_timestamps_to_aest() -> None:
+    app = create_app(InvestigationService(RecordedToolGateway.default()))
+    app.state.source_ingestor.connector = _StaticPublicConnector()
+
+    async def resolve_public_host(_: str) -> list[str]:
+        return ["8.8.8.8"]
+
+    app.state.source_ingestor.resolver = resolve_public_host
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/sources/fetch",
+            json={
+                "url": "https://example.com/update.txt",
+                "title": "Winter source",
+                "published_at": "2026-07-15T00:00:00+00:00",
+            },
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["published_at"].endswith("+10:00")
+    assert not payload["retrieved_at"].endswith("+00:00")
 
 
 def test_source_fetch_rejects_private_url_before_network_request() -> None:

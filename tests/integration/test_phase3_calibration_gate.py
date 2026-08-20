@@ -133,14 +133,15 @@ def test_unobserved_high_confidence_safety_check_blocks_a_nonempty_release() -> 
     assert "wrong_high has no eligible observations" in gate.failures
 
 
-def test_policy_conditional_abstention_checks_need_not_have_an_eligible_case() -> None:
+def test_release_blocks_when_required_abstention_has_no_eligible_case() -> None:
     gate = evaluate_release_gates(
         [release_record("case-1", band="HIGH", checks=_COMPLETE_RELEASE_CHECKS)]
     )
 
-    assert gate.status == "PASS"
+    assert gate.status == "FAIL"
     assert gate.denominators["required_abstention"] == 0
     assert gate.denominators["false_abstention"] == 0
+    assert "required_abstention has no eligible cases" in gate.failures
 
 
 def test_release_uses_actual_behavioral_denominators_and_thresholds() -> None:
@@ -153,8 +154,6 @@ def test_release_uses_actual_behavioral_denominators_and_thresholds() -> None:
         "confidence_caps": True,
         "top_1": True,
         "top_2": True,
-        "required_abstention": True,
-        "false_abstention": True,
     }
     records = [
         release_record(f"case-{index}", checks=complete_checks)
@@ -174,6 +173,53 @@ def test_release_uses_actual_behavioral_denominators_and_thresholds() -> None:
     assert gate.denominators["top_1"] == 5
     assert gate.proportions["top_1"] == 0.8
     assert gate.proportions["top_2"] == 0.8
+
+
+def test_required_abstentions_do_not_dilute_answerable_attribution_failures() -> None:
+    answerable_checks = {
+        **_COMPLETE_RELEASE_CHECKS,
+        "top_1": False,
+        "top_2": False,
+    }
+    required_abstention_checks = {
+        **_COMPLETE_RELEASE_CHECKS,
+        "required_abstention": True,
+    }
+    records = [release_record("answerable-failure", band="HIGH", checks=answerable_checks)]
+    records.extend(
+        release_record(
+            f"required-abstention-{index}",
+            checks=required_abstention_checks,
+        )
+        for index in range(20)
+    )
+
+    gate = evaluate_release_gates(records)
+
+    assert gate.status == "FAIL"
+    assert gate.raw_counts["top_1"] == {"passed": 0, "failed": 1}
+    assert gate.denominators["top_1"] == 1
+    assert gate.raw_counts["top_2"] == {"passed": 0, "failed": 1}
+    assert gate.denominators["top_2"] == 1
+    assert gate.denominators["required_abstention"] == 20
+    assert "top_1 is below the 75% threshold" in gate.failures
+
+
+def test_release_requires_observed_required_abstention_behavior() -> None:
+    records = [
+        release_record(
+            f"answerable-{index}",
+            band="HIGH" if index == 0 else "MEDIUM",
+            checks=_COMPLETE_RELEASE_CHECKS,
+        )
+        for index in range(24)
+    ]
+
+    gate = evaluate_release_gates(records)
+
+    assert gate.status == "FAIL"
+    assert gate.denominators["required_abstention"] == 0
+    assert "required_abstention has no eligible cases" in gate.failures
 
 
 def test_holdout_grading_cannot_change_the_active_confidence_rule() -> None:

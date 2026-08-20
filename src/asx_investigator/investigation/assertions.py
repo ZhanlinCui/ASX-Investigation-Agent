@@ -16,13 +16,6 @@ from asx_investigator.market.sessions import classify_event
 
 MAX_ASSERTION_CHARACTERS = 1_800
 
-_MECHANICAL_TERMS = {
-    "consolidation",
-    "distribution",
-    "dividend",
-    "reconstruction",
-    "split",
-}
 _CONTEXT_TERMS = {
     "commodity",
     "copper",
@@ -49,12 +42,18 @@ def normalized_hash(value: str) -> str:
 
 
 def classify_mechanism_hint(
-    *, exact_text: str, source_authority: str, source_name: str
+    *, exact_text: str, source_authority: str, source_name: str, evidence_kind: str
 ) -> CausalMechanism:
-    """Classify a bounded assertion span and trusted source metadata only."""
+    """Classify a bounded span without treating corporate-action words as events.
+
+    A mechanical mechanism requires the dedicated action evidence created from
+    the corporate-actions provider. Ordinary issuer prose may mention a
+    dividend, split or distribution, but it remains an issuer event unless the
+    provider supplied the corresponding action record.
+    """
 
     text = exact_text.lower()
-    if any(term in text for term in _MECHANICAL_TERMS):
+    if evidence_kind == "CORPORATE_ACTION" and source_authority == "APPROVED_OFFICIAL":
         return CausalMechanism.MECHANICAL
     source_metadata = f"{source_authority} {source_name}".lower()
     if "issuer" in source_metadata or "investor relations" in source_metadata:
@@ -114,6 +113,7 @@ def build_assertions(
                     exact_text=exact_text,
                     source_authority=item.authority,
                     source_name=item.source_name,
+                    evidence_kind=item.evidence_kind,
                 ),
                 normalized_entities=extract_entities(exact_text),
                 normalized_values=extract_numeric_values(exact_text),

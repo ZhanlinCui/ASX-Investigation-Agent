@@ -29,6 +29,8 @@ class ProviderOutcome[T](BaseModel):
 
     @model_validator(mode="after")
     def validate_data_for_success(self) -> ProviderOutcome[T]:
+        if self.retrieved_at.tzinfo is None:
+            raise ValueError("Provider outcome retrieved_at must be timezone-aware")
         if self.status in {ProviderStatus.SUCCESS, ProviderStatus.PARTIAL} and self.data is None:
             raise ValueError(f"{self.status} outcomes require data")
         return self

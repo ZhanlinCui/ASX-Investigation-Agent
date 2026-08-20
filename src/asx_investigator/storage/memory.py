@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -27,6 +28,26 @@ ALLOWED_MEMORY_TYPES = {
     "CALIBRATION_ARTIFACT",
 }
 MEMORY_POLICY_VERSION = "shared-memory-v1"
+
+_ALLOWED_ISSUER_REFERENCE_FIELDS = {
+    "business_description",
+    "commodity_exposure",
+    "currency",
+    "currency_exposure",
+    "exchange",
+    "industry",
+    "sector",
+}
+_PROHIBITED_ISSUER_REFERENCE_CONTENT = re.compile(
+    r"\b(?:"
+    r"case[\s_-]*(?:claim|conclusion)|"
+    r"prior[\s_-]*(?:case[\s_-]*)?(?:claim|conclusion|hypothesis)|"
+    r"model[\s_-]*(?:summary|hypothesis)|"
+    r"holdout[\s_-]*(?:label|case)|"
+    r"sealed[\s_-]*(?:holdout|label)"
+    r")\b",
+    re.IGNORECASE,
+)
 
 _PROVIDER_HEALTH_STATUSES = {
     "SUCCESS",
@@ -159,6 +180,15 @@ class MemoryAdmissionPolicy:
     def _validate_issuer_reference(cls, payload: dict[str, object]) -> None:
         for field in ("ticker", "field", "value", "source_url"):
             cls._require_string(payload, field)
+        reference_field = str(payload["field"]).strip().lower()
+        if reference_field not in _ALLOWED_ISSUER_REFERENCE_FIELDS:
+            raise MemoryAdmissionError(
+                "Issuer reference field is not in the approved allowlist"
+            )
+        if _PROHIBITED_ISSUER_REFERENCE_CONTENT.search(str(payload["value"])):
+            raise MemoryAdmissionError(
+                "Issuer reference value cannot contain case reasoning or holdout content"
+            )
         cls._require_hash(payload, "source_hash")
         valid_from = cls._require_timestamp(payload, "valid_from")
         valid_until = cls._require_timestamp(payload, "valid_until")
@@ -227,9 +257,10 @@ class SharedMemoryRepository:
             raise MemoryAdmissionError(
                 "Issuer reference facts require point-in-time availability (valid_from)"
             )
+        normalized_field = field.strip().lower()
         payload: dict[str, object] = {
             "ticker": ticker,
-            "field": field,
+            "field": normalized_field,
             "value": value,
             "source_hash": source_hash,
             "source_url": source_url,
@@ -242,7 +273,7 @@ class SharedMemoryRepository:
             fact = IssuerReferenceFact(
                 entry_id=str(uuid4()),
                 ticker=ticker,
-                field=field,
+                field=normalized_field,
                 value=value,
                 source_hash=source_hash,
                 source_url=source_url,

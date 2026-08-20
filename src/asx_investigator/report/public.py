@@ -10,6 +10,7 @@ until they are individually admitted.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote, urlsplit
 
@@ -20,6 +21,7 @@ from asx_investigator.domain.models import (
     InvestigationOutcome,
     InvestigationReport,
 )
+from asx_investigator.market.sessions import SYDNEY
 
 _EXTERNAL_URL = re.compile(r"(?i)(?:https?://|ftp://|www\.)[^\s<>()\[\]]+")
 _PUBLIC_IDENTIFIER = re.compile(r"^[A-Z][A-Z0-9_:-]{0,119}$")
@@ -30,6 +32,14 @@ def _display_text(value: str) -> str:
     """Keep labels readable without letting a stored external URL become a link."""
 
     return _EXTERNAL_URL.sub("[external URL omitted]", value)
+
+
+def public_timestamp(value: datetime) -> str:
+    """Render every public timestamp in the ASX product timezone."""
+
+    if value.tzinfo is None:
+        raise ValueError("Public timestamps must be timezone-aware")
+    return value.astimezone(SYDNEY).isoformat()
 
 
 def _public_identifier(value: str, *, fallback: str) -> str:
@@ -109,8 +119,8 @@ def public_report_payload(report: InvestigationReport) -> dict[str, Any]:
             "evidence_id": item.evidence_id,
             "source_name": _display_text(item.source_name),
             "source_host": _source_host(item.source_url),
-            "published_at": item.published_at.isoformat(),
-            "retrieved_at": item.retrieved_at.isoformat(),
+            "published_at": public_timestamp(item.published_at),
+            "retrieved_at": public_timestamp(item.retrieved_at),
             "authority": item.authority,
             "title": _display_text(item.title),
             "role": str(item.role),
@@ -252,7 +262,7 @@ def public_report_payload(report: InvestigationReport) -> dict[str, Any]:
         "checkpoint_lineage": [
             {
                 "stage": _public_stage(item.stage),
-                "created_at": item.created_at.isoformat(),
+                "created_at": public_timestamp(item.created_at),
                 "schema_version": item.schema_version,
                 "policy_version": item.policy_version,
             }
@@ -264,8 +274,8 @@ def public_report_payload(report: InvestigationReport) -> dict[str, Any]:
                 "evidence_id": item.evidence_id,
                 "span_hash": item.span_hash,
                 "artifact_hash": item.artifact_hash,
-                "published_at": item.published_at.isoformat(),
-                "retrieved_at": item.retrieved_at.isoformat(),
+                "published_at": public_timestamp(item.published_at),
+                "retrieved_at": public_timestamp(item.retrieved_at),
                 "source_authority": item.source_authority,
                 "locator": item.locator,
                 "role": str(item.role),
@@ -291,7 +301,7 @@ def public_report_payload(report: InvestigationReport) -> dict[str, Any]:
                 ),
                 "taxonomy_version": item.taxonomy_version,
                 "policy_version": item.policy_version,
-                "created_at": item.created_at.isoformat(),
+                "created_at": public_timestamp(item.created_at),
                 "supporting_assertion_ids": list(item.supporting_assertion_ids),
                 "contradicting_assertion_ids": list(item.contradicting_assertion_ids),
             }
@@ -309,7 +319,7 @@ def public_report_payload(report: InvestigationReport) -> dict[str, Any]:
                 "validation_status": str(item.validation_status)
                 if item.validation_status is not None
                 else None,
-                "created_at": item.created_at.isoformat(),
+                "created_at": public_timestamp(item.created_at),
             }
             for item in report.ledger
         ],

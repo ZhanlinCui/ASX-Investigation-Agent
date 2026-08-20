@@ -11,6 +11,7 @@ from time import perf_counter
 
 from pydantic import ValidationError
 
+from asx_investigator.agent.gemini import GeminiInvestigationReasoner
 from asx_investigator.agent.reasoning import InvestigationReasoner
 from asx_investigator.confidence.calibration import (
     CalibrationRecord,
@@ -40,6 +41,7 @@ from asx_investigator.evaluation.models import (
 )
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.market.sessions import resolve_session
+from asx_investigator.settings import Settings
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ENVIRONMENT_ROOTS = {
@@ -184,6 +186,8 @@ async def execute_gold_corpus(
     corpus: FrozenGoldCorpus,
     *,
     reasoner: InvestigationReasoner | None = None,
+    estimated_cost_aud: float | None = None,
+    allow_deterministic_fixture: bool = False,
 ) -> GoldExecutionReport:
     """Run frozen provider artifacts through the same kernel as the product.
 
@@ -191,6 +195,35 @@ async def execute_gold_corpus(
     Its wall-clock timestamps are intentionally excluded from that comparison.
     """
 
+    if reasoner is None and not allow_deterministic_fixture:
+        return GoldExecutionReport(
+            corpus=corpus.kind,
+            corpus_version=corpus.corpus_version,
+            status="NOT_RUN",
+            reason=(
+                "External agent release execution requires a configured structured reasoner; "
+                "deterministic fixture mode must be explicitly enabled."
+            ),
+        )
+    if reasoner is not None and (estimated_cost_aud is None or estimated_cost_aud <= 0):
+        return GoldExecutionReport(
+            corpus=corpus.kind,
+            corpus_version=corpus.corpus_version,
+            status="NOT_RUN",
+            reason=(
+                "External agent release execution requires a known non-zero per-case "
+                "model cost in AUD."
+            ),
+            model_configuration=dict(reasoner.model_configuration),
+        )
+
+    model_configuration = (
+        dict(reasoner.model_configuration)
+        if reasoner is not None
+        else {"provider": "RECORDED_DETERMINISTIC_FIXTURE", "structured_calls_max": "0"}
+    )
+    known_cost = 0.0 if reasoner is None else estimated_cost_aud
+    assert known_cost is not None
     cases: list[GoldExecutionCase] = []
     errors: list[str] = []
     for bundle in corpus.bundles:
@@ -209,14 +242,21 @@ async def execute_gold_corpus(
         if corpus.kind == "holdout":
             # Keep sealed labels out of the execution object; an external grader
             # may later join this blind report with labels outside this runtime.
-            cases.append(GoldExecutionCase(case_id=bundle.case_id, report=first))
+            cases.append(
+                GoldExecutionCase(
+                    case_id=bundle.case_id,
+                    report=first,
+                    latency_ms=latency_ms,
+                    estimated_cost_aud=known_cost,
+                )
+            )
             continue
         manifest = corpus.manifests[bundle.case_id]
         evaluation = grade_report(
             _evaluation_manifest(manifest),
             first,
             latency_ms=latency_ms,
-            estimated_cost_aud=0.0,
+            estimated_cost_aud=known_cost,
             ledger_reproducible=normalized_ledger(first) == normalized_ledger(second),
         )
         cases.append(
@@ -224,6 +264,8 @@ async def execute_gold_corpus(
                 case_id=bundle.case_id,
                 report=first,
                 evaluation=evaluation,
+                latency_ms=latency_ms,
+                estimated_cost_aud=known_cost,
             )
         )
     if errors:
@@ -233,6 +275,7 @@ async def execute_gold_corpus(
             status="FAIL",
             cases=cases,
             errors=errors,
+            model_configuration=model_configuration,
         )
     if corpus.kind == "holdout":
         return GoldExecutionReport(
@@ -241,6 +284,7 @@ async def execute_gold_corpus(
             status="NOT_RUN",
             cases=cases,
             reason="Blind holdout reports were produced; labels require an external grader.",
+            model_configuration=model_configuration,
         )
     failed = [item.case_id for item in cases if item.evaluation and not item.evaluation.passed]
     return GoldExecutionReport(
@@ -249,11 +293,15 @@ async def execute_gold_corpus(
         status="FAIL" if failed else "PASS",
         cases=cases,
         errors=[f"Development cases failed: {', '.join(failed)}"] if failed else [],
+        model_configuration=model_configuration,
     )
 
 
 async def run_external_gold(
-    corpus: str, *, reasoner: InvestigationReasoner | None = None
+    corpus: str,
+    *,
+    reasoner: InvestigationReasoner | None = None,
+    estimated_cost_aud: float | None = None,
 ) -> GoldExecutionReport:
     """Run a supplied external corpus, never treating an absent root as a pass."""
 
@@ -274,7 +322,22 @@ async def run_external_gold(
         )
     except FrozenBundleError as error:
         return GoldExecutionReport(corpus=corpus, status="FAIL", errors=[str(error)])
-    return await execute_gold_corpus(frozen, reasoner=reasoner)
+    configured_reasoner = reasoner
+    if configured_reasoner is None:
+        settings = Settings()
+        if not settings.gemini_api_key:
+            return GoldExecutionReport(
+                corpus=corpus,
+                corpus_version=frozen.corpus_version,
+                status="NOT_RUN",
+                reason="GEMINI_API_KEY is not configured for external agent evaluation.",
+            )
+        configured_reasoner = GeminiInvestigationReasoner(settings)
+    return await execute_gold_corpus(
+        frozen,
+        reasoner=configured_reasoner,
+        estimated_cost_aud=estimated_cost_aud,
+    )
 
 
 def _environment_root(corpus: str) -> Path | None:
@@ -319,7 +382,7 @@ def _evaluation_manifest(manifest: GoldCaseManifest) -> EvalCaseManifest:
         future_evidence_blacklist=manifest.future_evidence_ids,
         mechanical_flags=[manifest.mechanical_expectation],
         coverage_expectation=manifest.coverage_expectation,
-        abstention_policy="ALLOWED" if manifest.abstention_allowed else "FORBIDDEN",
+        abstention_policy=manifest.abstention_policy,
         expected_outcome=manifest.expected_outcome,
     )
 
