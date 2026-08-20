@@ -33,7 +33,7 @@ Phase 2 makes the vertical slice auditable and recoverable for real cases. It ke
 | Milestone | Deliverable | Gate |
 |---|---|---|
 | P2.0 | Contracts and living documentation | Complete |
-| P2.1 | Durable case memory | Complete |
+| P2.1 | Durable case memory | Complete for case/version/event durability; exact stage-output resume remains open |
 | P2.2 | Live market truth | Complete; credentialed smoke not run |
 | P2.3 | Evidence and context | Complete |
 | P2.4 | Controlled investigation | Complete |

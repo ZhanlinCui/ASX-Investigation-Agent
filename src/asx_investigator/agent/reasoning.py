@@ -146,6 +146,14 @@ def validate_reasoning(
 
     hypotheses: list[Hypothesis] = []
     for proposal in batch.hypotheses:
+        cited = [
+            item
+            for item in packet.snippets
+            if item.evidence_id in proposal.supporting_evidence_ids
+        ]
+        safe_statement = " ".join(
+            f"{item.title}: {item.passage}" for item in cited
+        )[:520]
         hypotheses.append(
             Hypothesis(
                 hypothesis_id=proposal.hypothesis_id,
@@ -156,7 +164,7 @@ def validate_reasoning(
                     else HypothesisStatus.ALTERNATIVE
                 ),
                 driver_label=proposal.driver_label,
-                statement=proposal.statement,
+                statement=safe_statement,
                 expected_signature=proposal.expected_signature,
                 supporting_evidence_ids=proposal.supporting_evidence_ids,
                 contradicting_evidence_ids=proposal.contradicting_evidence_ids,
@@ -168,7 +176,10 @@ def validate_reasoning(
             validation_id="V-EVIDENCE",
             kind="EVIDENCE_REFERENTIAL_INTEGRITY",
             status=ValidationStatus.PASS,
-            summary="All cited evidence IDs exist and the selected hypothesis has causal input.",
+            summary=(
+                "All cited evidence IDs exist; the selected hypothesis has causal input; "
+                "published hypothesis text is reconstructed from exact cited passages."
+            ),
             evidence_ids=selected.supporting_evidence_ids,
         ),
         ValidationResult(

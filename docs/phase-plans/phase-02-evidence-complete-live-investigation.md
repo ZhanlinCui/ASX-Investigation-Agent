@@ -56,6 +56,7 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 - [x] Store report and request payloads as schema-versioned JSON.
 - [x] Make event sequence append-only and replayable from a sequence number.
 - [x] Requeue recoverable runs at application startup.
+- [ ] Resume from persisted stage outputs without replaying earlier provider calls; current recovery reruns the deterministic pipeline from the stored request.
 - [x] Add child versions for typed refinements; never update a completed version in place.
 - [x] Store raw bytes in a SHA-256 content-addressed artifact directory.
 - [x] Gate: restart, event replay, version lineage, immutability and artifact deduplication tests pass.

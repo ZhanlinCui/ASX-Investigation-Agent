@@ -92,6 +92,24 @@ def test_unrelated_causal_statement_cannot_hide_behind_a_valid_evidence_id() -> 
         )
 
 
+def test_public_hypothesis_text_is_rebuilt_from_evidence_not_model_prose() -> None:
+    injected = proposal().model_copy(
+        update={
+            "statement": (
+                "Production guidance was followed by an unsupported rival takeover offer."
+            )
+        }
+    )
+    result = validate_reasoning(
+        HypothesisBatch(hypotheses=[injected]), challenge(), packet()
+    )
+
+    assert "takeover" not in result.leading.statement.lower()
+    assert result.leading.statement == (
+        "Guidance update: Production guidance increased before market open."
+    )
+
+
 @pytest.mark.parametrize(
     ("role", "challenge_updates", "message"),
     [

@@ -68,13 +68,21 @@ def parse_source(content: bytes, mime_type: str) -> list[ParsedPassage]:
 def _parse_pdf(content: bytes) -> list[ParsedPassage]:
     import fitz
 
+    max_pages = 500
+    max_extracted_characters = 5_000_000
     passages: list[ParsedPassage] = []
+    extracted_characters = 0
     with fitz.open(stream=content, filetype="pdf") as document:
+        if document.page_count > max_pages:
+            raise ValueError(f"PDF sources must not exceed {max_pages} pages")
         for page_index, page in enumerate(document, start=1):
             blocks = page.get_text("blocks", sort=True)
             for block_index, block in enumerate(blocks, start=1):
                 text = " ".join(str(block[4]).split())
                 if text:
+                    extracted_characters += len(text)
+                    if extracted_characters > max_extracted_characters:
+                        raise ValueError("PDF extracted text exceeds the safe processing limit")
                     passages.append(
                         ParsedPassage(
                             text=text,
@@ -83,4 +91,3 @@ def _parse_pdf(content: bytes) -> list[ParsedPassage]:
                         )
                     )
     return passages
-

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from uuid import uuid4
 
 from asx_investigator.agent.reasoning import (
@@ -132,10 +133,37 @@ class InvestigationService:
                 ),
             )
         ]
+        mechanical_evidence: list[EvidenceItem] = []
+        for index, action in enumerate(corporate_actions.data or [], start=1):
+            passage = (
+                f"{action.action_type} was effective on {action.effective_date.isoformat()}"
+                + (
+                    f" with adjustment factor {action.adjustment_factor}."
+                    if action.adjustment_factor is not None
+                    else "."
+                )
+            )
+            mechanical_evidence.append(
+                EvidenceItem(
+                    evidence_id=f"M{index}",
+                    source_name=corporate_actions.provider,
+                    source_url="https://eodhd.com/financial-apis/asx-corporate-actions-data-api/",
+                    published_at=session.market_open - timedelta(seconds=1),
+                    retrieved_at=corporate_actions.retrieved_at,
+                    role=EvidenceRole.CAUSAL_INPUT,
+                    authority="APPROVED_OFFICIAL",
+                    title=f"Effective {action.action_type.lower()}",
+                    passage=passage,
+                    content_hash=hashlib.sha256(passage.encode()).hexdigest(),
+                    locator=action.source_id,
+                )
+            )
         await self._stage(trace, on_stage, "test_mechanical_explanations", "COMPLETED")
 
         await self._stage(trace, on_stage, "discover_and_freeze_documents", "RUNNING")
-        raw_evidence = await self.tools.get_evidence(normalized_ticker, requested_date)
+        raw_evidence = mechanical_evidence + await self.tools.get_evidence(
+            normalized_ticker, requested_date
+        )
         raw_evidence.extend(supplied_evidence or [])
         evidence = self._deduplicate_evidence(
             self._eligible_evidence(raw_evidence, session)
@@ -453,7 +481,11 @@ class InvestigationService:
                     HypothesisProposal(
                         hypothesis_id="H1",
                         rank=1,
-                        driver_label="ISSUER_DISCLOSURE",
+                        driver_label=(
+                            "MECHANICAL"
+                            if causal[0].evidence_id.startswith("M")
+                            else "ISSUER_DISCLOSURE"
+                        ),
                         statement=(
                             f"{causal[0].title} is the leading explanation for the recorded "
                             f"{ticker} move."

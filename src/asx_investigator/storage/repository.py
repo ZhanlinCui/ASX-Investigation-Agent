@@ -402,10 +402,19 @@ class SQLiteCaseRepository:
         if parent.case_id != case_id:
             raise KeyError(parent_version_id)
         version_id = str(uuid4())
-        version_number = parent.version_number + 1
         now = datetime.now(UTC).isoformat()
         async with aiosqlite.connect(self.database_path) as connection:
             await connection.execute("PRAGMA foreign_keys=ON")
+            await connection.execute("BEGIN IMMEDIATE")
+            row = await (
+                await connection.execute(
+                    """SELECT COALESCE(MAX(version_number), 0) + 1
+                    FROM case_versions WHERE case_id = ?""",
+                    (case_id,),
+                )
+            ).fetchone()
+            assert row is not None
+            version_number = int(row[0])
             await connection.execute(
                 """INSERT INTO case_versions
                 (version_id, case_id, version_number, parent_version_id, status, outcome,

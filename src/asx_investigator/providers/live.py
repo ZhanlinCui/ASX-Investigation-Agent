@@ -32,7 +32,12 @@ class LiveToolGateway:
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
         self.settings = settings
-        self.client = client or httpx.AsyncClient(timeout=20)
+        self._owns_client = client is None
+        self.client = client or httpx.AsyncClient(timeout=20, trust_env=False)
+
+    async def close(self) -> None:
+        if self._owns_client:
+            await self.client.aclose()
 
     def _require_eodhd(self) -> str:
         if not self.settings.eodhd_api_key:

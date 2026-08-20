@@ -271,7 +271,7 @@ class CaseManager:
             report.case_id = record.case_id
             report.run_id = record.version_id
             report.status = InvestigationStatus.COMPLETED
-            report.parent_case_id = record.parent_version_id
+            report.parent_case_id = record.case_id if record.parent_version_id else None
             report.parent_version_id = record.parent_version_id
             report.case_version = record.version_number
             for diagnostic in report.provider_diagnostics:
@@ -292,8 +292,8 @@ class CaseManager:
             )
             persisted_events = await self.repository.list_events(record.version_id)
             report.trace_reference = TraceReference(
-                event_count=len(persisted_events),
-                last_sequence=persisted_events[-1].sequence,
+                event_count=len(persisted_events) + 1,
+                last_sequence=persisted_events[-1].sequence + 1,
             )
             completed = await self.repository.complete_version(
                 record.version_id,
@@ -377,7 +377,7 @@ def create_app(
         if injected_service
         else settings.artifact_dir
     )
-    source_client = httpx.AsyncClient(timeout=20)
+    source_client = httpx.AsyncClient(timeout=20, trust_env=False)
     source_ingestor = SourceIngestor(ArtifactStore(artifact_root), source_client)
     manager = CaseManager(
         service,
@@ -394,6 +394,9 @@ def create_app(
         yield
         await manager.stop()
         await source_client.aclose()
+        close_tools = getattr(service.tools, "close", None)
+        if close_tools is not None:
+            await close_tools()
 
     app = FastAPI(title="ASX Investigation Agent", version="0.2.0", lifespan=lifespan)
     app.add_middleware(

@@ -113,7 +113,8 @@ def test_stage_checkpoints_are_persisted_with_monotonic_sequences(tmp_path: Path
     assert sequences == list(range(1, len(sequences) + 1))
     assert "generate_ranked_hypotheses" not in stages
     assert {"acquire_market_data", "deterministic_validation", "persist_and_publish"} <= stages
-    assert report["trace_reference"]["last_sequence"] < sequences[-1]
+    assert report["trace_reference"]["last_sequence"] == sequences[-1]
+    assert report["trace_reference"]["event_count"] == len(sequences)
 
 
 def test_sse_replays_only_events_after_last_event_id(tmp_path: Path) -> None:

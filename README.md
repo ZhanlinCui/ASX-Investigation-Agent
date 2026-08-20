@@ -65,3 +65,4 @@ Use `evals/run_recorded_evals.py --write-results` only when intentionally refres
 - The 24 development cases are synthetic policy sentinels, not historical accuracy evidence.
 - The 12-case sealed holdout is `NOT_RUN` unless `ASX_EVAL_HOLDOUT_ROOT` is supplied.
 - The credentialed Live smoke gate is `NOT_RUN` in an unconfigured checkout.
+- Recoverable runs restart the deterministic pipeline using the stored request and stage marker; exact stage-output resume is not yet implemented.

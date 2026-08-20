@@ -7,6 +7,8 @@ from asx_investigator.agent.reasoning import (
 )
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers.live import DataProviderUnavailable
+from asx_investigator.providers.market import CorporateAction
+from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.recorded import RecordedToolGateway
 
 
@@ -107,6 +109,25 @@ class DuplicateEvidenceGateway(CountingGateway):
         return [items[0], items[0].model_copy(update={"evidence_id": "E2"})]
 
 
+class PositiveMechanicalGateway(CountingGateway):
+    async def get_corporate_actions(self, ticker, trade_date):
+        original = await self.delegate.get_corporate_actions(ticker, trade_date)
+        return ProviderOutcome(
+            status=ProviderStatus.SUCCESS,
+            provider="OFFICIAL_ACTIONS",
+            retrieved_at=original.retrieved_at,
+            coverage="COMPLETE",
+            data=[
+                CorporateAction(
+                    action_type="SPLIT",
+                    effective_date=trade_date,
+                    adjustment_factor=2.0,
+                    source_id="action-1",
+                )
+            ],
+        )
+
+
 async def test_model_failure_preserves_market_facts_and_abstains() -> None:
     reasoner = FailingReasoner()
     report = await InvestigationService(
@@ -183,3 +204,14 @@ async def test_duplicate_content_is_removed_before_claim_ids_are_generated() -> 
 
     assert [item.evidence_id for item in report.evidence] == ["E1"]
     assert report.claims[0].supporting_evidence_ids == ["E1"]
+
+
+async def test_positive_corporate_action_becomes_a_cited_mechanical_explanation() -> None:
+    report = await InvestigationService(PositiveMechanicalGateway()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+
+    assert report.outcome == "EXPLAINED"
+    assert report.hypotheses[0].driver_label == "MECHANICAL"
+    assert report.claims[0].supporting_evidence_ids == ["M1"]
+    assert report.evidence[0].locator == "action-1"
