@@ -21,7 +21,18 @@ from asx_investigator.evaluation.gold import grade_external_holdout_records
 from asx_investigator.evaluation.grading import _confidence_caps, evaluate_release_gates
 from asx_investigator.evaluation.models import ReleaseGateReport
 from asx_investigator.investigation.service import InvestigationService
+from asx_investigator.providers.live import DataProviderUnavailable
 from asx_investigator.providers.recorded import RecordedToolGateway
+
+
+class MissingMarketGateway(RecordedToolGateway):
+    async def get_market_data(self, ticker, trade_date):
+        raise DataProviderUnavailable("market data unavailable for calibration regression")
+
+
+class PartialDisclosureGateway(RecordedToolGateway):
+    async def disclosure_coverage_complete(self, ticker, trade_date):
+        return False
 
 
 def release_record(
@@ -303,3 +314,48 @@ async def test_confidence_cap_release_check_derives_requirements_from_report_sta
 
         assert passed is False
         assert expected_cap in detail
+
+
+@pytest.mark.parametrize(
+    ("trade_date", "gateway", "expected_coverage_status"),
+    [
+        ("2026-08-22", RecordedToolGateway.default(), "NOT_A_TRADING_DAY"),
+        ("2026-08-20", MissingMarketGateway(), "INCOMPLETE_MARKET_DATA"),
+    ],
+)
+async def test_confidence_cap_release_check_keeps_pre_evidence_failures_at_primary_cap_only(
+    trade_date: str,
+    gateway: RecordedToolGateway,
+    expected_coverage_status: str,
+) -> None:
+    report = await InvestigationService(gateway).investigate(
+        "BHP", trade_date, mode="RECORDED"
+    )
+
+    passed, detail = _confidence_caps(report)
+
+    assert report.coverage_status == expected_coverage_status
+    assert report.confidence.applied_caps == ["NO_PRIMARY_EVIDENCE"]
+    assert passed is True
+    assert "required_caps=['NO_PRIMARY_EVIDENCE']" in detail
+
+
+async def test_confidence_cap_release_check_detects_missing_disclosure_cap_for_partial_evidence(
+) -> None:
+    report = await InvestigationService(PartialDisclosureGateway()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+    without_disclosure_cap = report.model_copy(
+        update={
+            "confidence": report.confidence.model_copy(
+                update={"applied_caps": ["NO_PRIMARY_EVIDENCE"]}
+            )
+        }
+    )
+
+    passed, detail = _confidence_caps(without_disclosure_cap)
+
+    assert report.coverage_status == "PARTIAL_DISCLOSURE_COVERAGE"
+    assert "DISCLOSURE_COVERAGE_PARTIAL" in report.confidence.applied_caps
+    assert passed is False
+    assert "DISCLOSURE_COVERAGE_PARTIAL" in detail

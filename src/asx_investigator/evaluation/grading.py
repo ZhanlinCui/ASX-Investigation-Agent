@@ -42,6 +42,10 @@ _REQUIRED_ZERO_TOLERANCE_METRICS = (
 )
 _REQUIRED_ATTRIBUTION_METRICS = ("top_1", "top_2")
 _CONDITIONAL_BEHAVIORAL_METRICS = ("required_abstention", "false_abstention")
+_PARTIAL_DISCLOSURE_COVERAGE_STATUSES = {
+    "PARTIAL_DISCLOSURE_COVERAGE",
+    "SCOPED_REFINEMENT",
+}
 
 
 def grade_report(
@@ -441,6 +445,10 @@ def _confidence_caps(report: InvestigationReport) -> tuple[bool, str]:
         classify_event(item.published_at, session).session_relationship == "DURING_SESSION"
         for item in selected_support
     )
+    partial_disclosure_coverage = (
+        str(report.outcome) != "INCOMPLETE_DATA"
+        and report.coverage_status in _PARTIAL_DISCLOSURE_COVERAGE_STATUSES
+    )
     features = ConfidenceFeatures(
         source_authority=0,
         temporal_eligibility=0,
@@ -451,7 +459,7 @@ def _confidence_caps(report: InvestigationReport) -> tuple[bool, str]:
         has_primary_evidence=any(
             item.authority in primary_authorities for item in selected_support
         ),
-        disclosure_coverage_complete=report.coverage_status == "COMPLETE",
+        disclosure_coverage_complete=not partial_disclosure_coverage,
         has_material_conflict=any(conflict.material for conflict in report.conflicts),
         timing_resolved=not needs_intraday_data,
         needs_intraday_data=needs_intraday_data,
