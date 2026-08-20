@@ -294,6 +294,24 @@ class SQLiteCaseRepository:
             for row in rows
         ]
 
+    async def get_source_artifact_hashes(self, source_ids: list[str]) -> list[str]:
+        if not source_ids:
+            return []
+        placeholders = ",".join("?" for _ in source_ids)
+        async with aiosqlite.connect(self.database_path) as connection:
+            rows = await (
+                await connection.execute(
+                    f"""SELECT source_id, artifact_id FROM source_documents
+                    WHERE source_id IN ({placeholders}) ORDER BY source_id""",
+                    source_ids,
+                )
+            ).fetchall()
+        found = {str(row[0]) for row in rows}
+        missing = set(source_ids) - found
+        if missing:
+            raise KeyError(sorted(missing)[0])
+        return sorted({str(row[1]) for row in rows})
+
     async def find_evidence_content(
         self, evidence_id: str, *, version_id: str | None = None
     ) -> dict[str, object]:
@@ -486,6 +504,121 @@ class SQLiteCaseRepository:
             await connection.commit()
         return await self.get_version(version_id)
 
+    async def create_checkpoint_recovery_child(
+        self,
+        parent_version_id: str,
+        *,
+        request_payload: dict[str, object],
+        reason: str,
+    ) -> CaseVersionRecord:
+        """Atomically retire an incompatible current version and queue its child."""
+
+        version_id = str(uuid4())
+        now = datetime.now(UTC).isoformat()
+        async with aiosqlite.connect(self.database_path) as connection:
+            await connection.execute("PRAGMA foreign_keys=ON")
+            await connection.execute("BEGIN IMMEDIATE")
+            try:
+                parent_row = await (
+                    await connection.execute(
+                        """SELECT v.case_id, v.status, v.active_stage, c.current_version_id
+                        FROM case_versions v JOIN cases c ON c.case_id = v.case_id
+                        WHERE v.version_id = ?""",
+                        (parent_version_id,),
+                    )
+                ).fetchone()
+                if parent_row is None:
+                    raise KeyError(parent_version_id)
+                case_id = str(parent_row[0])
+                if str(parent_row[3]) != parent_version_id:
+                    raise ValueError("Only the current case version can create a recovery child")
+                if str(parent_row[1]) not in {
+                    "QUEUED",
+                    "RUNNING",
+                    "FAILED_RECOVERABLE",
+                }:
+                    raise CaseVersionImmutableError(parent_version_id)
+                version_row = await (
+                    await connection.execute(
+                        """SELECT COALESCE(MAX(version_number), 0) + 1
+                        FROM case_versions WHERE case_id = ?""",
+                        (case_id,),
+                    )
+                ).fetchone()
+                assert version_row is not None
+                version_number = int(version_row[0])
+                await connection.execute(
+                    """UPDATE case_versions SET status = 'FAILED', error = ?, updated_at = ?
+                    WHERE version_id = ?""",
+                    (
+                        f"CHECKPOINT_INCOMPATIBLE: {reason}",
+                        now,
+                        parent_version_id,
+                    ),
+                )
+                await connection.execute(
+                    """INSERT INTO case_versions
+                    (version_id, case_id, version_number, parent_version_id, status, outcome,
+                     active_stage, request_json, report_json, error, created_at, updated_at,
+                     request_schema_version)
+                    VALUES (?, ?, ?, ?, 'QUEUED', NULL, NULL, ?, NULL, NULL, ?, ?, ?)""",
+                    (
+                        version_id,
+                        case_id,
+                        version_number,
+                        parent_version_id,
+                        self._serialize_case_payload(request_payload),
+                        now,
+                        now,
+                        "case-payload-v1",
+                    ),
+                )
+                await connection.execute(
+                    "UPDATE cases SET current_version_id = ?, updated_at = ? WHERE case_id = ?",
+                    (version_id, now, case_id),
+                )
+                sequence_row = await (
+                    await connection.execute(
+                        """SELECT COALESCE(MAX(sequence), 0) + 1 FROM run_events
+                        WHERE version_id = ?""",
+                        (parent_version_id,),
+                    )
+                ).fetchone()
+                assert sequence_row is not None
+                await connection.execute(
+                    """INSERT INTO run_events
+                    (version_id, sequence, event_type, stage, status, payload_json, created_at)
+                    VALUES (?, ?, 'recovery', ?, 'CHECKPOINT_INCOMPATIBLE', ?, ?)""",
+                    (
+                        parent_version_id,
+                        int(sequence_row[0]),
+                        str(parent_row[2] or "recovery"),
+                        json.dumps({"reason": reason}),
+                        now,
+                    ),
+                )
+                await connection.execute(
+                    """INSERT INTO run_events
+                    (version_id, sequence, event_type, stage, status, payload_json, created_at)
+                    VALUES (?, 1, 'recovery', 'resolve_instrument',
+                    'CHECKPOINT_INCOMPATIBLE', ?, ?)""",
+                    (
+                        version_id,
+                        json.dumps(
+                            {
+                                "parent_version_id": parent_version_id,
+                                "reason": reason,
+                            }
+                        ),
+                        now,
+                    ),
+                )
+                await connection.commit()
+            except Exception:
+                await connection.rollback()
+                raise
+        return await self.get_version(version_id)
+
     async def get_version(self, version_id: str) -> CaseVersionRecord:
         query = """SELECT v.version_id, v.case_id, v.version_number, v.parent_version_id,
                    c.ticker, c.trade_date, c.mode, v.status, v.outcome, v.active_stage,
@@ -648,9 +781,10 @@ class SQLiteCaseRepository:
     async def list_recoverable_versions(self) -> list[CaseVersionRecord]:
         async with aiosqlite.connect(self.database_path) as connection:
             cursor = await connection.execute(
-                """SELECT version_id FROM case_versions
-                WHERE status IN ('QUEUED', 'RUNNING', 'FAILED_RECOVERABLE')
-                ORDER BY created_at"""
+                """SELECT v.version_id FROM case_versions v
+                JOIN cases c ON c.current_version_id = v.version_id
+                WHERE v.status IN ('QUEUED', 'RUNNING', 'FAILED_RECOVERABLE')
+                ORDER BY v.created_at"""
             )
             rows = await cursor.fetchall()
         return [await self.get_version(row[0]) for row in rows]
@@ -719,6 +853,30 @@ class SQLiteCaseRepository:
                 created_at=datetime.fromisoformat(str(row[7])),
             )
         return None
+
+    async def latest_checkpoint(self, version_id: str) -> CheckpointEnvelope | None:
+        async with aiosqlite.connect(self.database_path) as connection:
+            row = await (
+                await connection.execute(
+                    """SELECT version_id, stage, input_artifact_hashes_json,
+                    output_artifact_hashes_json, typed_state_json, schema_version,
+                    policy_version, created_at FROM checkpoints
+                    WHERE version_id = ? ORDER BY created_at DESC LIMIT 1""",
+                    (version_id,),
+                )
+            ).fetchone()
+        if row is None:
+            return None
+        return CheckpointEnvelope(
+            version_id=str(row[0]),
+            stage=str(row[1]),
+            input_artifact_hashes=json.loads(str(row[2])),
+            output_artifact_hashes=json.loads(str(row[3])),
+            typed_state_json=json.loads(str(row[4])),
+            schema_version=str(row[5]),
+            policy_version=str(row[6]),
+            created_at=datetime.fromisoformat(str(row[7])),
+        )
 
     @staticmethod
     def _serialize_case_payload(payload: dict[str, object]) -> str:

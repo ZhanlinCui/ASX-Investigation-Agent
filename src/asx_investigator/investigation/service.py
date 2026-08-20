@@ -40,6 +40,12 @@ from asx_investigator.domain.models import (
 )
 from asx_investigator.evidence.context import EvidencePacket, build_evidence_packet
 from asx_investigator.evidence.validation import validate_claims
+from asx_investigator.investigation.checkpoints import (
+    CHECKPOINT_POLICY_VERSION,
+    CheckpointEnvelope,
+    InvestigationState,
+    MarketDataCheckpoint,
+)
 from asx_investigator.market.forensics import calculate_market_move
 from asx_investigator.market.sessions import classify_event, resolve_session
 from asx_investigator.providers.errors import DataProviderUnavailable
@@ -47,6 +53,7 @@ from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.protocols import InvestigationTools
 
 StageObserver = Callable[[str, str, dict[str, object]], Awaitable[None]]
+StageCompletion = Callable[[str], Awaitable[None]]
 
 
 class InvestigationService:
@@ -70,47 +77,132 @@ class InvestigationService:
         primary_only: bool = False,
         excluded_evidence_ids: list[str] | None = None,
         evidence_cutoff: datetime | None = None,
+        version_id: str | None = None,
+        request_artifact_hash: str | None = None,
+        input_artifact_hashes: list[str] | None = None,
+        resume_checkpoint: CheckpointEnvelope | None = None,
     ) -> InvestigationReport:
         normalized_ticker = ticker.upper().strip()
         requested_date = (
             date.fromisoformat(trade_date) if isinstance(trade_date, str) else trade_date
         )
-        trace: list[dict[str, str]] = []
+        if version_id is None and resume_checkpoint is not None:
+            raise ValueError("resume_checkpoint requires a durable version_id")
+        if version_id is not None and request_artifact_hash is None:
+            raise ValueError("checkpointing requires a sealed request artifact hash")
 
-        await self._stage(trace, on_stage, "resolve_instrument", "RUNNING")
-        instrument = await self.tools.resolve_instrument(normalized_ticker)
-        await self._stage(trace, on_stage, "resolve_instrument", "COMPLETED")
+        if resume_checkpoint is not None:
+            state = InvestigationState.model_validate(resume_checkpoint.typed_state_json)
+            current_input_hashes = sorted(set(input_artifact_hashes or []))
+            if (
+                request_artifact_hash is not None
+                and request_artifact_hash not in current_input_hashes
+            ):
+                current_input_hashes.append(request_artifact_hash)
+            if state.version_id != version_id or resume_checkpoint.version_id != version_id:
+                raise ValueError("checkpoint version does not match the investigation version")
+            if state.request_artifact_hash != request_artifact_hash:
+                raise ValueError("checkpoint request artifact does not match")
+            if sorted(state.initial_input_artifact_hashes) != sorted(current_input_hashes):
+                raise ValueError("checkpoint input artifacts do not match current inputs")
+            if sorted(resume_checkpoint.input_artifact_hashes) != state.input_hashes():
+                raise ValueError("checkpoint input artifacts do not match its typed state")
+            if sorted(resume_checkpoint.output_artifact_hashes) != state.output_hashes():
+                raise ValueError("checkpoint output artifacts do not match its typed state")
+            if state.completed_stage != resume_checkpoint.stage:
+                raise ValueError("checkpoint stage does not match its typed state")
+            trace = list(state.trace)
+            trace.append({"node": resume_checkpoint.stage, "status": "RESUMED"})
+        else:
+            initial_hashes = sorted(set(input_artifact_hashes or []))
+            if request_artifact_hash is not None and request_artifact_hash not in initial_hashes:
+                initial_hashes.append(request_artifact_hash)
+            state = InvestigationState(
+                version_id=version_id or "direct-investigation",
+                request_artifact_hash=request_artifact_hash or "0" * 64,
+                initial_input_artifact_hashes=initial_hashes or ["0" * 64],
+            )
+            trace = []
 
-        await self._stage(trace, on_stage, "resolve_asx_session", "RUNNING")
-        session = resolve_session(requested_date)
-        await self._stage(trace, on_stage, "resolve_asx_session", "COMPLETED")
+        async def completed(stage: str) -> None:
+            trace.append({"node": stage, "status": "COMPLETED"})
+            state.complete(stage)
+            state.trace = list(trace)
+            payload: dict[str, object] = {}
+            if version_id is not None:
+                typed_state_json = state.model_dump(mode="json")
+                InvestigationState.model_validate(typed_state_json)
+                checkpoint = CheckpointEnvelope(
+                    version_id=version_id,
+                    stage=stage,
+                    input_artifact_hashes=state.input_hashes(),
+                    output_artifact_hashes=state.output_hashes(),
+                    typed_state_json=typed_state_json,
+                    policy_version=CHECKPOINT_POLICY_VERSION,
+                )
+                payload["checkpoint"] = checkpoint.model_dump(mode="json")
+            if on_stage:
+                await on_stage(stage, "COMPLETED", payload)
+
+        if not state.has_completed("resolve_instrument"):
+            state.instrument = None
+            await self._stage(trace, on_stage, "resolve_instrument", "RUNNING")
+            state.instrument = await self.tools.resolve_instrument(normalized_ticker)
+            await completed("resolve_instrument")
+        instrument = state.instrument
+
+        if not state.has_completed("resolve_asx_session"):
+            state.session = None
+            await self._stage(trace, on_stage, "resolve_asx_session", "RUNNING")
+            state.session = resolve_session(requested_date)
+            await completed("resolve_asx_session")
+        session = state.session
         if not session.is_trading_day:
             return self._non_trading_report(
                 normalized_ticker, requested_date, session, instrument, trace
             )
 
-        await self._stage(trace, on_stage, "acquire_market_data", "RUNNING")
-        try:
-            market_data = await self.tools.get_market_data(normalized_ticker, requested_date)
-        except DataProviderUnavailable as error:
-            await self._stage(trace, on_stage, "acquire_market_data", "INCOMPLETE")
-            return self._incomplete_market_report(
-                normalized_ticker,
-                requested_date,
-                session,
-                instrument,
-                str(error),
-                trace,
-                error.outcomes,
+        if not state.has_completed("acquire_market_data"):
+            state.market_data = None
+            await self._stage(trace, on_stage, "acquire_market_data", "RUNNING")
+            try:
+                acquired_market_data = await self.tools.get_market_data(
+                    normalized_ticker, requested_date
+                )
+            except DataProviderUnavailable as error:
+                await self._stage(trace, on_stage, "acquire_market_data", "INCOMPLETE")
+                return self._incomplete_market_report(
+                    normalized_ticker,
+                    requested_date,
+                    session,
+                    instrument,
+                    str(error),
+                    trace,
+                    error.outcomes,
+                )
+            benchmark_return = await self.tools.get_benchmark_return(requested_date)
+            state.market_data = MarketDataCheckpoint(
+                bars=acquired_market_data.bars,
+                selected_provider=acquired_market_data.selected_provider,
+                outcomes=acquired_market_data.outcomes,
+                conflicts=acquired_market_data.conflicts,
+                coverage_gap=acquired_market_data.coverage_gap,
+                benchmark_return=benchmark_return,
+                market_move=calculate_market_move(
+                    acquired_market_data.bars, benchmark_return
+                ),
             )
-        benchmark_return = await self.tools.get_benchmark_return(requested_date)
-        market_move = calculate_market_move(market_data.bars, benchmark_return)
-        await self._stage(trace, on_stage, "acquire_market_data", "COMPLETED")
+            await completed("acquire_market_data")
+        market_data = state.market_data.to_result()
+        market_move = state.market_data.market_move
 
-        await self._stage(trace, on_stage, "test_mechanical_explanations", "RUNNING")
-        corporate_actions = await self.tools.get_corporate_actions(
-            normalized_ticker, requested_date
-        )
+        if not state.has_completed("test_mechanical_explanations"):
+            state.corporate_actions = None
+            await self._stage(trace, on_stage, "test_mechanical_explanations", "RUNNING")
+            state.corporate_actions = await self.tools.get_corporate_actions(
+                normalized_ticker, requested_date
+            )
+        corporate_actions = state.corporate_actions
         corporate_action_coverage = corporate_actions.status in {
             ProviderStatus.SUCCESS,
             ProviderStatus.EMPTY,
@@ -159,77 +251,104 @@ class InvestigationService:
                     locator=action.source_id,
                 )
             )
-        await self._stage(trace, on_stage, "test_mechanical_explanations", "COMPLETED")
+        if not state.has_completed("test_mechanical_explanations"):
+            state.validations = list(validations)
+            await completed("test_mechanical_explanations")
+        else:
+            validations = list(state.validations) or validations
 
-        await self._stage(trace, on_stage, "discover_and_freeze_documents", "RUNNING")
-        raw_evidence = mechanical_evidence + await self.tools.get_evidence(
-            normalized_ticker, requested_date
-        )
-        raw_evidence.extend(supplied_evidence or [])
-        evidence = self._deduplicate_evidence(
-            self._eligible_evidence(raw_evidence, session)
-        )
-        evidence = self._apply_evidence_policy(
-            evidence,
-            primary_only=primary_only,
-            excluded_evidence_ids=excluded_evidence_ids or [],
-            evidence_cutoff=evidence_cutoff,
-        )
-        await self._stage(trace, on_stage, "discover_and_freeze_documents", "COMPLETED")
+        if not state.has_completed("discover_and_freeze_documents"):
+            state.evidence = None
+            await self._stage(trace, on_stage, "discover_and_freeze_documents", "RUNNING")
+            raw_evidence = mechanical_evidence + await self.tools.get_evidence(
+                normalized_ticker, requested_date
+            )
+            raw_evidence.extend(supplied_evidence or [])
+            state.evidence = self._deduplicate_evidence(
+                self._eligible_evidence(raw_evidence, session)
+            )
+            state.evidence = self._apply_evidence_policy(
+                state.evidence,
+                primary_only=primary_only,
+                excluded_evidence_ids=excluded_evidence_ids or [],
+                evidence_cutoff=evidence_cutoff,
+            )
+            await completed("discover_and_freeze_documents")
+        evidence = list(state.evidence)
 
-        await self._stage(trace, on_stage, "extract_exact_passages", "RUNNING")
-        await self._stage(trace, on_stage, "extract_exact_passages", "COMPLETED")
-        coverage_complete = await self.tools.disclosure_coverage_complete(
-            normalized_ticker, requested_date
-        )
-        coverage_gaps = [market_data.coverage_gap] if market_data.coverage_gap else []
-        if not corporate_action_coverage:
-            coverage_gaps.append(
-                CoverageGap(
-                    gap_id="CORPORATE_ACTIONS_UNAVAILABLE",
-                    capability="corporate_actions",
-                    provider=corporate_actions.provider,
-                    reason=corporate_actions.error_code or str(corporate_actions.status),
-                    impact=(
-                        "A mechanical split, distribution or reconstruction cannot be ruled out."
-                    ),
-                    retryable=corporate_actions.status == ProviderStatus.RETRYABLE_FAILURE,
-                )
-            )
-        if not coverage_complete:
-            coverage_gaps.append(
-                CoverageGap(
-                    gap_id="DISCLOSURE_COVERAGE_PARTIAL",
-                    capability="issuer_disclosures",
-                    provider="issuer_ir",
-                    reason="A complete point-in-time issuer disclosure archive was unavailable.",
-                    impact="Causal confidence is capped and no-catalyst cannot be concluded.",
-                )
-            )
         refinement_limited = bool(
             primary_only or excluded_evidence_ids or evidence_cutoff is not None
         )
-        if refinement_limited:
-            coverage_gaps.append(
-                CoverageGap(
-                    gap_id="REFINEMENT_SCOPE_LIMITED",
-                    capability="refinement_scope",
-                    provider="user_refinement",
-                    reason="The child version intentionally filtered the acquired evidence set.",
-                    impact="The scoped result cannot establish that no catalyst existed.",
-                )
+        if not state.has_completed("extract_exact_passages"):
+            state.coverage_complete = None
+            state.coverage_gaps = None
+            state.conflicts = None
+            await self._stage(trace, on_stage, "extract_exact_passages", "RUNNING")
+            state.coverage_complete = await self.tools.disclosure_coverage_complete(
+                normalized_ticker, requested_date
             )
+            coverage_gaps = [market_data.coverage_gap] if market_data.coverage_gap else []
+            if not corporate_action_coverage:
+                coverage_gaps.append(
+                    CoverageGap(
+                        gap_id="CORPORATE_ACTIONS_UNAVAILABLE",
+                        capability="corporate_actions",
+                        provider=corporate_actions.provider,
+                        reason=corporate_actions.error_code or str(corporate_actions.status),
+                        impact=(
+                            "A mechanical split, distribution or reconstruction cannot be "
+                            "ruled out."
+                        ),
+                        retryable=(
+                            corporate_actions.status == ProviderStatus.RETRYABLE_FAILURE
+                        ),
+                    )
+                )
+            if not state.coverage_complete:
+                coverage_gaps.append(
+                    CoverageGap(
+                        gap_id="DISCLOSURE_COVERAGE_PARTIAL",
+                        capability="issuer_disclosures",
+                        provider="issuer_ir",
+                        reason=(
+                            "A complete point-in-time issuer disclosure archive was unavailable."
+                        ),
+                        impact=(
+                            "Causal confidence is capped and no-catalyst cannot be concluded."
+                        ),
+                    )
+                )
+            if refinement_limited:
+                coverage_gaps.append(
+                    CoverageGap(
+                        gap_id="REFINEMENT_SCOPE_LIMITED",
+                        capability="refinement_scope",
+                        provider="user_refinement",
+                        reason=(
+                            "The child version intentionally filtered the acquired evidence set."
+                        ),
+                        impact="The scoped result cannot establish that no catalyst existed.",
+                    )
+                )
+            state.coverage_gaps = coverage_gaps
+            state.conflicts = list(market_data.conflicts)
+            await completed("extract_exact_passages")
+        coverage_complete = state.coverage_complete
+        coverage_gaps = list(state.coverage_gaps or [])
         effective_coverage_complete = coverage_complete and not refinement_limited
 
-        await self._stage(trace, on_stage, "assemble_evidence_packet", "RUNNING")
-        packet = build_evidence_packet(
-            normalized_ticker,
-            market_move,
-            evidence,
-            coverage_gaps,
-            market_data.conflicts,
-        )
-        await self._stage(trace, on_stage, "assemble_evidence_packet", "COMPLETED")
+        if not state.has_completed("assemble_evidence_packet"):
+            state.packet = None
+            await self._stage(trace, on_stage, "assemble_evidence_packet", "RUNNING")
+            state.packet = build_evidence_packet(
+                normalized_ticker,
+                market_move,
+                evidence,
+                coverage_gaps,
+                market_data.conflicts,
+            )
+            await completed("assemble_evidence_packet")
+        packet = state.packet
 
         validated: ValidatedReasoning | None = None
         reasoning_error: str | None = None
@@ -249,6 +368,8 @@ class InvestigationService:
                 evidence_cutoff=evidence_cutoff,
                 trace=trace,
                 on_stage=on_stage,
+                checkpoint_state=state,
+                completed=completed,
             )
         except (ReasoningUnavailable, ReasoningValidationError) as error:
             reasoning_error = str(error)
@@ -480,46 +601,59 @@ class InvestigationService:
         evidence_cutoff: datetime | None,
         trace: list[dict[str, str]],
         on_stage: StageObserver | None,
+        checkpoint_state: InvestigationState,
+        completed: StageCompletion,
     ) -> tuple[ValidatedReasoning | None, list[EvidenceItem], EvidencePacket]:
         causal = [item for item in evidence if item.role == EvidenceRole.CAUSAL_INPUT]
         if self.reasoner is None:
             if mode.upper() != "RECORDED" or not causal:
                 return None, evidence, packet
-            batch = HypothesisBatch(
-                hypotheses=[
-                    HypothesisProposal(
-                        hypothesis_id="H1",
-                        rank=1,
-                        driver_label=(
-                            "MECHANICAL"
-                            if causal[0].evidence_id.startswith("M")
-                            else "ISSUER_DISCLOSURE"
-                        ),
-                        statement=(
-                            f"{causal[0].title} is the leading explanation for the recorded "
-                            f"{ticker} move."
-                        ),
-                        expected_signature="Directionally consistent unusual price and volume.",
-                        supporting_evidence_ids=[causal[0].evidence_id],
-                    )
-                ]
-            )
-            challenge = ChallengeResult(
-                leading_hypothesis_id="H1",
-                timing_leakage=False,
-                unsupported_assumptions=[],
-                summary="The recorded fixture contains no stronger admissible alternative.",
-            )
-            await self._stage(trace, on_stage, "deterministic_validation", "RUNNING")
+            if not checkpoint_state.has_completed("deterministic_validation"):
+                checkpoint_state.hypothesis_batch = HypothesisBatch(
+                    hypotheses=[
+                        HypothesisProposal(
+                            hypothesis_id="H1",
+                            rank=1,
+                            driver_label=(
+                                "MECHANICAL"
+                                if causal[0].evidence_id.startswith("M")
+                                else "ISSUER_DISCLOSURE"
+                            ),
+                            statement=(
+                                f"{causal[0].title} is the leading explanation for the recorded "
+                                f"{ticker} move."
+                            ),
+                            expected_signature=(
+                                "Directionally consistent unusual price and volume."
+                            ),
+                            supporting_evidence_ids=[causal[0].evidence_id],
+                        )
+                    ]
+                )
+            if not checkpoint_state.has_completed("deterministic_validation"):
+                checkpoint_state.challenge = ChallengeResult(
+                    leading_hypothesis_id="H1",
+                    timing_leakage=False,
+                    unsupported_assumptions=[],
+                    summary="The recorded fixture contains no stronger admissible alternative.",
+                )
+            batch = checkpoint_state.hypothesis_batch
+            challenge = checkpoint_state.challenge
+            if not checkpoint_state.has_completed("deterministic_validation"):
+                await self._stage(trace, on_stage, "deterministic_validation", "RUNNING")
             validated = validate_reasoning(batch, challenge, packet)
-            await self._stage(trace, on_stage, "deterministic_validation", "COMPLETED")
+            if not checkpoint_state.has_completed("deterministic_validation"):
+                await completed("deterministic_validation")
             return validated, evidence, packet
 
-        await self._stage(trace, on_stage, "generate_ranked_hypotheses", "RUNNING")
-        batch = await self.reasoner.generate(packet)
-        await self._stage(trace, on_stage, "generate_ranked_hypotheses", "COMPLETED")
+        if not checkpoint_state.has_completed("generate_ranked_hypotheses"):
+            checkpoint_state.hypothesis_batch = None
+            await self._stage(trace, on_stage, "generate_ranked_hypotheses", "RUNNING")
+            checkpoint_state.hypothesis_batch = await self.reasoner.generate(packet)
+            await completed("generate_ranked_hypotheses")
+        batch = checkpoint_state.hypothesis_batch
 
-        if batch.evidence_gap:
+        if batch.evidence_gap and not checkpoint_state.has_completed("targeted_retrieval"):
             retriever = getattr(self.tools, "targeted_retrieve", None)
             if retriever is not None:
                 await self._stage(trace, on_stage, "targeted_retrieval", "RUNNING")
@@ -545,14 +679,21 @@ class InvestigationService:
                 packet = build_evidence_packet(
                     ticker, market_move, evidence, coverage_gaps, conflicts
                 )
-                await self._stage(trace, on_stage, "targeted_retrieval", "COMPLETED")
+                checkpoint_state.evidence = list(evidence)
+                checkpoint_state.packet = packet
+                await completed("targeted_retrieval")
 
-        await self._stage(trace, on_stage, "challenge_leading_hypothesis", "RUNNING")
-        challenge = await self.reasoner.challenge(packet, batch)
-        await self._stage(trace, on_stage, "challenge_leading_hypothesis", "COMPLETED")
-        await self._stage(trace, on_stage, "deterministic_validation", "RUNNING")
+        if not checkpoint_state.has_completed("challenge_leading_hypothesis"):
+            checkpoint_state.challenge = None
+            await self._stage(trace, on_stage, "challenge_leading_hypothesis", "RUNNING")
+            checkpoint_state.challenge = await self.reasoner.challenge(packet, batch)
+            await completed("challenge_leading_hypothesis")
+        challenge = checkpoint_state.challenge
+        if not checkpoint_state.has_completed("deterministic_validation"):
+            await self._stage(trace, on_stage, "deterministic_validation", "RUNNING")
         validated = validate_reasoning(batch, challenge, packet)
-        await self._stage(trace, on_stage, "deterministic_validation", "COMPLETED")
+        if not checkpoint_state.has_completed("deterministic_validation"):
+            await completed("deterministic_validation")
         return validated, evidence, packet
 
     @staticmethod
