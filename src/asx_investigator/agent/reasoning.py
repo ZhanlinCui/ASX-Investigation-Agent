@@ -59,6 +59,7 @@ class ChallengeResult(BaseModel):
     timing_leakage: bool
     unsupported_assumptions: list[str] = Field(default_factory=list, max_length=10)
     summary: str = Field(min_length=10, max_length=520)
+    accepted_targeted_evidence_ids: list[str] = Field(default_factory=list, max_length=12)
 
 
 class ValidatedReasoning(BaseModel):
@@ -103,10 +104,13 @@ def validate_reasoning(
     batch: HypothesisBatch,
     challenge: ChallengeResult,
     packet: EvidencePacket,
+    *,
+    targeted_evidence_ids: set[str] | None = None,
 ) -> ValidatedReasoning:
     allowed = set(packet.allowed_evidence_ids)
     roles = {item.evidence_id: item.role for item in packet.snippets}
     proposals = {item.hypothesis_id: item for item in batch.hypotheses}
+    targeted = targeted_evidence_ids or set()
     for item in batch.hypotheses:
         referenced = set(item.supporting_evidence_ids + item.contradicting_evidence_ids)
         unknown = sorted(referenced - allowed)
@@ -120,13 +124,37 @@ def validate_reasoning(
         raise ReasoningValidationError("Challenge detected timing leakage")
     if challenge.unsupported_assumptions:
         raise ReasoningValidationError("Challenge detected unsupported assumptions")
+    accepted_targets = challenge.accepted_targeted_evidence_ids
+    unknown_targets = sorted(set(accepted_targets) - allowed)
+    if unknown_targets:
+        raise ReasoningValidationError(
+            f"Challenge accepted unknown targeted evidence: {unknown_targets}"
+        )
+    unfrozen_targets = sorted(set(accepted_targets) - targeted)
+    if unfrozen_targets:
+        raise ReasoningValidationError(
+            f"Challenge accepted evidence that is not a retrieved targeted item: {unfrozen_targets}"
+        )
+    noncausal_targets = sorted(
+        evidence_id
+        for evidence_id in accepted_targets
+        if roles.get(evidence_id) != EvidenceRole.CAUSAL_INPUT
+    )
+    if noncausal_targets:
+        raise ReasoningValidationError(
+            "Challenge accepted targeted evidence that is not causal input: "
+            f"{noncausal_targets}"
+        )
     selected_id = challenge.stronger_alternative_id or challenge.leading_hypothesis_id
     if selected_id not in proposals:
         raise ReasoningValidationError("Challenge selected an unknown stronger alternative")
     selected = proposals[selected_id]
+    selected_supporting_ids = list(
+        dict.fromkeys(selected.supporting_evidence_ids + accepted_targets)
+    )
     if not any(
         roles.get(evidence_id) == EvidenceRole.CAUSAL_INPUT
-        for evidence_id in selected.supporting_evidence_ids
+        for evidence_id in selected_supporting_ids
     ):
         raise ReasoningValidationError(
             "Selected hypothesis has no temporally eligible causal evidence"
@@ -134,7 +162,7 @@ def validate_reasoning(
     supporting_text = " ".join(
         f"{item.title} {item.passage}"
         for item in packet.snippets
-        if item.evidence_id in selected.supporting_evidence_ids
+        if item.evidence_id in selected_supporting_ids
     )
     statement_tokens = _meaningful_tokens(selected.statement)
     overlap = statement_tokens & _meaningful_tokens(supporting_text)
@@ -146,10 +174,15 @@ def validate_reasoning(
 
     hypotheses: list[Hypothesis] = []
     for proposal in batch.hypotheses:
+        support_ids = (
+            selected_supporting_ids
+            if proposal.hypothesis_id == selected_id
+            else proposal.supporting_evidence_ids
+        )
         cited = [
             item
             for item in packet.snippets
-            if item.evidence_id in proposal.supporting_evidence_ids
+            if item.evidence_id in support_ids
         ]
         safe_statement = " ".join(
             f"{item.title}: {item.passage}" for item in cited
@@ -166,7 +199,7 @@ def validate_reasoning(
                 driver_label=proposal.driver_label,
                 statement=safe_statement,
                 expected_signature=proposal.expected_signature,
-                supporting_evidence_ids=proposal.supporting_evidence_ids,
+                supporting_evidence_ids=support_ids,
                 contradicting_evidence_ids=proposal.contradicting_evidence_ids,
                 validation_ids=["V-EVIDENCE", "V-CHALLENGE"],
             )
@@ -180,14 +213,14 @@ def validate_reasoning(
                 "All cited evidence IDs exist; the selected hypothesis has causal input; "
                 "published hypothesis text is reconstructed from exact cited passages."
             ),
-            evidence_ids=selected.supporting_evidence_ids,
+            evidence_ids=selected_supporting_ids,
         ),
         ValidationResult(
             validation_id="V-CHALLENGE",
             kind="ADVERSARIAL_CHALLENGE",
             status=ValidationStatus.PASS,
             summary=challenge.summary,
-            evidence_ids=selected.supporting_evidence_ids,
+            evidence_ids=selected_supporting_ids,
         ),
     ]
     leading = next(item for item in hypotheses if item.hypothesis_id == selected_id)

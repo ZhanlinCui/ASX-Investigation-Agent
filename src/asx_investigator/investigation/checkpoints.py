@@ -87,6 +87,7 @@ class InvestigationState(BaseModel):
     conflicts: list[SourceConflict] | None = None
     packet: EvidencePacket | None = None
     hypothesis_batch: HypothesisBatch | None = None
+    targeted_evidence_ids: list[str] = Field(default_factory=list)
     challenge: ChallengeResult | None = None
     validations: list[ValidationResult] = Field(default_factory=list)
     trace: list[dict[str, str]] = Field(default_factory=list)

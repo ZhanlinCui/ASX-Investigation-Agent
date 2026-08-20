@@ -669,11 +669,12 @@ class InvestigationService:
                     batch.evidence_gap.purpose,
                 )
                 known = {item.evidence_id for item in evidence}
-                evidence.extend(
+                targeted_candidates = [
                     item
                     for item in self._eligible_evidence(retrieved, session)
                     if item.evidence_id not in known
-                )
+                ]
+                evidence.extend(targeted_candidates)
                 evidence = self._deduplicate_evidence(evidence)
                 evidence = self._apply_evidence_policy(
                     evidence,
@@ -686,6 +687,11 @@ class InvestigationService:
                 )
                 checkpoint_state.evidence = list(evidence)
                 checkpoint_state.packet = packet
+                checkpoint_state.targeted_evidence_ids = [
+                    item.evidence_id
+                    for item in targeted_candidates
+                    if item.evidence_id in packet.allowed_evidence_ids
+                ]
                 await completed("targeted_retrieval")
 
         if not checkpoint_state.has_completed("challenge_leading_hypothesis"):
@@ -696,7 +702,12 @@ class InvestigationService:
         challenge = checkpoint_state.challenge
         if not checkpoint_state.has_completed("deterministic_validation"):
             await self._stage(trace, on_stage, "deterministic_validation", "RUNNING")
-        validated = validate_reasoning(batch, challenge, packet)
+        validated = validate_reasoning(
+            batch,
+            challenge,
+            packet,
+            targeted_evidence_ids=set(checkpoint_state.targeted_evidence_ids),
+        )
         if not checkpoint_state.has_completed("deterministic_validation"):
             await completed("deterministic_validation")
         return validated, evidence, packet
