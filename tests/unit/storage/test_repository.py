@@ -4,6 +4,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
+from asx_investigator.investigation.checkpoints import CheckpointEnvelope
 from asx_investigator.storage.repository import (
     CaseVersionImmutableError,
     SQLiteCaseRepository,
@@ -64,6 +65,33 @@ async def test_completed_version_is_immutable_and_child_retains_parent(
 
     assert child.version_number == 2
     assert child.parent_version_id == case.version_id
+
+
+async def test_completed_version_rejects_checkpoint_save(
+    repository: SQLiteCaseRepository,
+) -> None:
+    case = await repository.create_case(
+        ticker="BHP",
+        trade_date=date(2026, 8, 20),
+        mode="RECORDED",
+        request_payload={"ticker": "BHP"},
+    )
+    await repository.complete_version(
+        case.version_id,
+        report_payload={"case_id": case.case_id, "status": "COMPLETED"},
+        outcome="EXPLAINED",
+    )
+    checkpoint = CheckpointEnvelope(
+        version_id=case.version_id,
+        stage="acquire_market_data",
+        input_artifact_hashes=[],
+        output_artifact_hashes=[],
+        typed_state_json={},
+        policy_version="phase2-v1",
+    )
+
+    with pytest.raises(CaseVersionImmutableError):
+        await repository.save_checkpoint(checkpoint)
 
 
 async def test_running_and_recoverable_versions_are_returned_after_restart(

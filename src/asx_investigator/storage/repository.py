@@ -656,6 +656,9 @@ class SQLiteCaseRepository:
         return [await self.get_version(row[0]) for row in rows]
 
     async def save_checkpoint(self, checkpoint: CheckpointEnvelope) -> None:
+        existing = await self.get_version(checkpoint.version_id)
+        if existing.status in self.TERMINAL_STATUSES:
+            raise CaseVersionImmutableError(checkpoint.version_id)
         async with aiosqlite.connect(self.database_path) as connection:
             await connection.execute("PRAGMA foreign_keys=ON")
             await connection.execute(
