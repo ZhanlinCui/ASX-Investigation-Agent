@@ -2,7 +2,7 @@
 ## Product Design Requirement
 
 **Version:** 2.4
-**Status:** Phase 2.8 product baseline; P3.0–P3.3 complete; P3.4 frozen gold execution in progress
+**Status:** Phase 2.8 product baseline; P3.0–P3.4 complete; P3.5 calibration and release gates in progress
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -57,6 +57,7 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - Visible causal mechanism tests and rejected-hypothesis reasons.
 - An append-only investigation ledger with policy and artifact lineage.
 - Shared issuer reference facts admitted as bounded, point-in-time `CONTEXT_ONLY` context. They cannot support a hypothesis or claim, and prior case conclusions and holdout labels are rejected.
+- Frozen, hash-verified gold bundles that run through the production investigation path. Blind holdout reports never load or display sealed labels.
 
 ### Proposed for later Phase 3 milestones
 

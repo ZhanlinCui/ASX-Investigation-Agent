@@ -1,7 +1,7 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 21 August 2026
-**Product stage:** Phase 3.0–P3.3 complete; Phase 3.4 frozen gold execution in progress; Phase 2.8 recorded release candidate
+**Product stage:** Phase 3.0–P3.4 complete; Phase 3.5 calibration and release gates in progress; Phase 2.8 recorded release candidate
 
 **Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
 **Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
@@ -71,7 +71,7 @@ The proposed sequence is:
 5. publish calibration counts and release gates;
 6. close credentialed Live evidence and workbench gates.
 
-P3.0 completed the domain contract and documentation baseline. P3.1 completed the typed investigation kernel and append-only decision ledger. P3.2 binds causal reasoning and published claims to exact evidence assertions. P3.3 now admits only bounded, point-in-time issuer reference facts as non-causal context; it rejects case conclusions and holdout data, and keeps context outside assertions, mechanisms, claims and citations. P3.4 is executing frozen gold cases through the production path. Phase 2.8 remains the current runnable recorded release candidate, and all missing external gates remain `NOT_RUN`.
+P3.0 completed the domain contract and documentation baseline. P3.1 completed the typed investigation kernel and append-only decision ledger. P3.2 binds causal reasoning and published claims to exact evidence assertions. P3.3 admits only bounded, point-in-time issuer reference facts as non-causal context; it rejects case conclusions and holdout data, and keeps context outside assertions, mechanisms, claims and citations. P3.4 executes hash-verified frozen gold bundles through the production path and produces blind holdout reports without loading sealed labels. P3.5 is adding measured calibration metadata and release gates. Phase 2.8 remains the current runnable recorded release candidate, and all missing external gates remain `NOT_RUN`.
 
 ## Architecture boundaries
 
