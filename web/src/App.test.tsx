@@ -18,4 +18,11 @@ describe("App", () => {
     expect(toSydneyIso("2026-08-20T08:00")).toBe("2026-08-20T08:00:00+10:00");
     expect(toSydneyIso("2026-01-20T08:00")).toBe("2026-01-20T08:00:00+11:00");
   });
+
+  it("shows evidence provenance without rendering a probability", () => {
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("Artifact SHA-256");
+    expect(html).not.toContain("confidence probability");
+  });
 });

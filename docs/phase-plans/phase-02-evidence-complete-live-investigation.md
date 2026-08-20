@@ -1,6 +1,6 @@
 # Phase 2: Evidence-Complete Live Investigation
 
-**Status:** Recorded release candidate; external Live gates open
+**Status:** P2.8 recorded release candidate; external Live and gold-data gates open
 
 **Branch:** `phase2/evidence-complete-live`  
 **Model:** `gemini-3-flash-preview`, configurable through `GEMINI_MODEL`
@@ -84,6 +84,7 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 ### P2.4: Controlled investigation
 
 - [x] Persist stage checkpoints and explicit transition events.
+- [x] Resume compatible stage checkpoints and branch incompatible recoveries.
 - [x] First model role returns up to five ranked, materially different hypotheses.
 - [x] One targeted retrieval is allowed only when a structured evidence gap names its purpose and query.
 - [x] Second model role challenges the leading hypothesis and returns stronger alternatives or violations.
@@ -116,6 +117,7 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 - [x] Add typed refinement and parent-child version comparison.
 - [x] Keep JSON, Markdown and UI on the same report schema.
 - [x] Add CI for Python tests/lint, frontend tests/build and recorded evaluation smoke.
+- [x] Validate external gold-corpus contracts and expose frozen artifact/checkpoint provenance.
 - [x] Gate: clean checkout runs backend tests/lint, recorded evaluation, frontend tests and production build without modifying tracked files.
 - [ ] Gate: credentialed Live smoke passes; until then the release remains recorded-only.
 

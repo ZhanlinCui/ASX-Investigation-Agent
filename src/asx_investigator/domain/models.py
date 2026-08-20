@@ -193,6 +193,15 @@ class TraceReference(BaseModel):
     last_sequence: int = Field(ge=0)
 
 
+class CheckpointSummary(BaseModel):
+    stage: str
+    created_at: datetime
+    input_artifact_hashes: list[str] = Field(default_factory=list)
+    output_artifact_hashes: list[str] = Field(default_factory=list)
+    schema_version: str
+    policy_version: str
+
+
 class ProviderCallDiagnostic(BaseModel):
     provider: str
     operation: str
@@ -231,6 +240,8 @@ class InvestigationReport(BaseModel):
     source_policy_version: str = "phase2-v1"
     model_configuration: dict[str, str] = Field(default_factory=dict)
     provider_diagnostics: list[ProviderCallDiagnostic] = Field(default_factory=list)
+    artifact_hashes: list[str] = Field(default_factory=list)
+    checkpoint_lineage: list[CheckpointSummary] = Field(default_factory=list)
     trace_reference: TraceReference | None = None
     parent_case_id: str | None = None
     parent_version_id: str | None = None

@@ -430,6 +430,16 @@ class CaseManager:
             report.parent_case_id = record.case_id if record.parent_version_id else None
             report.parent_version_id = record.parent_version_id
             report.case_version = record.version_number
+            report.checkpoint_lineage = await self.repository.list_checkpoint_summaries(
+                record.version_id
+            )
+            report.artifact_hashes = sorted(
+                {
+                    diagnostic.artifact_id
+                    for diagnostic in report.provider_diagnostics
+                    if diagnostic.artifact_id is not None
+                }
+            )
             for diagnostic in report.provider_diagnostics:
                 await self.repository.record_provider_call(
                     record.version_id,

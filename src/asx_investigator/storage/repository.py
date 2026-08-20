@@ -9,7 +9,7 @@ from uuid import uuid4
 import aiosqlite
 from pydantic import BaseModel, Field
 
-from asx_investigator.domain.models import EvidenceItem, EvidenceRole
+from asx_investigator.domain.models import CheckpointSummary, EvidenceItem, EvidenceRole
 from asx_investigator.investigation.checkpoints import CheckpointEnvelope
 
 
@@ -936,6 +936,28 @@ class SQLiteCaseRepository:
             policy_version=str(row[6]),
             created_at=datetime.fromisoformat(str(row[7])),
         )
+
+    async def list_checkpoint_summaries(self, version_id: str) -> list[CheckpointSummary]:
+        async with aiosqlite.connect(self.database_path) as connection:
+            rows = await (
+                await connection.execute(
+                    """SELECT stage, input_artifact_hashes_json, output_artifact_hashes_json,
+                    schema_version, policy_version, created_at FROM checkpoints
+                    WHERE version_id = ? ORDER BY created_at, rowid""",
+                    (version_id,),
+                )
+            ).fetchall()
+        return [
+            CheckpointSummary(
+                stage=str(row[0]),
+                input_artifact_hashes=json.loads(str(row[1])),
+                output_artifact_hashes=json.loads(str(row[2])),
+                schema_version=str(row[3]),
+                policy_version=str(row[4]),
+                created_at=datetime.fromisoformat(str(row[5])),
+            )
+            for row in rows
+        ]
 
     @staticmethod
     def _serialize_case_payload(payload: dict[str, object]) -> str:
