@@ -56,3 +56,40 @@ class EvaluationReport(BaseModel):
     proportions: dict[str, float]
     cases: list[CaseEvaluation] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+
+
+class GoldCaseManifest(BaseModel):
+    case_id: str
+    ticker: str
+    trade_date: date
+    timezone: str
+    evidence_cutoff: datetime
+    artifact_ids: list[str] = Field(min_length=1)
+    eligible_evidence_ids: list[str] = Field(default_factory=list)
+    future_evidence_ids: list[str] = Field(default_factory=list)
+    driver_labels: list[str] = Field(min_length=1)
+    acceptable_alternatives: list[str] = Field(default_factory=list)
+    mechanical_expectation: str
+    coverage_expectation: str
+    citation_requirements: list[str] = Field(default_factory=list)
+    abstention_allowed: bool
+
+
+class GoldCorpusLoadResult(BaseModel):
+    corpus: Literal["development", "holdout"]
+    status: Literal["PASS", "FAIL", "NOT_RUN"]
+    cases: list[GoldCaseManifest] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class GoldCaseFailure(BaseModel):
+    case_id: str
+    failed_checks: list[str]
+
+
+class GoldReleaseReport(BaseModel):
+    status: Literal["PASS", "FAIL", "NOT_RUN"]
+    raw_counts: dict[str, dict[str, int]]
+    proportions: dict[str, float]
+    case_failures: list[GoldCaseFailure] = Field(default_factory=list)
