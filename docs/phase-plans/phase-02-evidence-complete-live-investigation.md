@@ -91,11 +91,11 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 
 ### P2.5: Confidence and abstention
 
-- [ ] Store claim support, selected-hypothesis strength and investigation completeness separately.
-- [ ] Compute bands from source authority, timing, market fit, corroboration, conflict, alternatives and coverage.
-- [ ] Apply explicit caps for missing primary evidence, incomplete disclosure coverage, material conflict and missing timing resolution.
-- [ ] Render the band and cap reasons; do not describe the internal score as probability.
-- [ ] Gate: monotonic feature, cap and abstention tests pass.
+- [x] Store claim support, selected-hypothesis strength and investigation completeness separately.
+- [x] Compute bands from source authority, timing, market fit, corroboration, conflict, alternatives and coverage.
+- [x] Apply explicit caps for missing primary evidence, incomplete disclosure coverage, material conflict and missing timing resolution.
+- [x] Render the band and cap reasons; do not describe the internal score as probability.
+- [x] Gate: monotonic feature, cap and abstention tests pass.
 
 ### P2.6: Evaluation
 

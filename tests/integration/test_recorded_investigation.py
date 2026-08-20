@@ -15,3 +15,6 @@ async def test_recorded_pre_open_guidance_case_produces_cited_cause() -> None:
     assert report.confidence.calibration_status == "UNCALIBRATED"
     assert report.completeness.status == "COMPLETE"
     assert report.conflicts == []
+    assert report.claim_support[0].claim_id == "C1"
+    assert report.claim_support[0].band == "HIGH"
+    assert report.confidence.score_interpretation == "INTERNAL_ORDINAL_NOT_PROBABILITY"

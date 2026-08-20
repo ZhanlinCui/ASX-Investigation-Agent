@@ -14,7 +14,12 @@ from asx_investigator.agent.reasoning import (
     ValidatedReasoning,
     validate_reasoning,
 )
-from asx_investigator.confidence.scoring import ConfidenceFeatures, score_confidence
+from asx_investigator.confidence.scoring import (
+    ConfidenceFeatures,
+    assess_claim_support,
+    requires_abstention,
+    score_confidence,
+)
 from asx_investigator.domain.models import (
     Claim,
     ClaimType,
@@ -22,6 +27,7 @@ from asx_investigator.domain.models import (
     CoverageGap,
     EvidenceItem,
     EvidenceRole,
+    HypothesisStatus,
     InvestigationOutcome,
     InvestigationReport,
     InvestigationStatus,
@@ -243,8 +249,41 @@ class InvestigationService:
                 has_material_conflict=bool(market_data.conflicts),
             )
         )
+        confidence = confidence.model_copy(
+            update={"selected_hypothesis_id": selected.hypothesis_id if selected else None}
+        )
+        if selected and requires_abstention(confidence):
+            outcome = InvestigationOutcome.INSUFFICIENT_EVIDENCE
+            claim = Claim(
+                claim_id="C1",
+                claim_type=ClaimType.UNRESOLVED,
+                text="The leading candidate did not clear the minimum confidence band.",
+            )
+            primary = PrimaryAssessment(primary_claim_id=None, summary=claim.text)
+            validated.hypotheses = [
+                item.model_copy(
+                    update={
+                        "status": (
+                            HypothesisStatus.INSUFFICIENT_EVIDENCE
+                            if item.hypothesis_id == selected.hypothesis_id
+                            else item.status
+                        )
+                    }
+                )
+                for item in validated.hypotheses
+            ]
+            validations.append(
+                ValidationResult(
+                    validation_id="V-ABSTENTION",
+                    kind="CONFIDENCE_GATE",
+                    status=ValidationStatus.FAIL,
+                    summary="LOW confidence candidates are not published as causal explanations.",
+                )
+            )
         claim.confidence = confidence.score
-        validate_claims([claim], {item.evidence_id: item for item in evidence})
+        evidence_registry = {item.evidence_id: item for item in evidence}
+        validate_claims([claim], evidence_registry)
+        claim_support = [assess_claim_support(claim, evidence_registry)]
         await self._stage(trace, on_stage, "confidence_and_abstention", "COMPLETED")
 
         missing = [gap.capability for gap in coverage_gaps]
@@ -264,6 +303,7 @@ class InvestigationService:
             claims=[claim],
             evidence=evidence,
             confidence=confidence,
+            claim_support=claim_support,
             completeness=CompletenessAssessment(
                 score=completeness_score,
                 status="COMPLETE" if completeness_score == 1 else "PARTIAL",

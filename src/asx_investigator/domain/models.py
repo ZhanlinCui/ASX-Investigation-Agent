@@ -120,9 +120,20 @@ class ConfidenceAssessment(BaseModel):
     score: float
     band: str
     calibration_status: str = "UNCALIBRATED"
+    score_interpretation: str = "INTERNAL_ORDINAL_NOT_PROBABILITY"
+    rule_version: str = "confidence-v1"
+    selected_hypothesis_id: str | None = None
     positive_factors: list[str] = Field(default_factory=list)
     negative_factors: list[str] = Field(default_factory=list)
     applied_caps: list[str] = Field(default_factory=list)
+
+
+class ClaimSupportAssessment(BaseModel):
+    claim_id: str
+    band: str
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    contradicting_evidence_ids: list[str] = Field(default_factory=list)
+    factors: list[str] = Field(default_factory=list)
 
 
 class PrimaryAssessment(BaseModel):
@@ -195,6 +206,7 @@ class InvestigationReport(BaseModel):
     claims: list[Claim] = Field(default_factory=list)
     evidence: list[EvidenceItem] = Field(default_factory=list)
     confidence: ConfidenceAssessment
+    claim_support: list[ClaimSupportAssessment] = Field(default_factory=list)
     coverage_status: str
     completeness: CompletenessAssessment = Field(
         default_factory=lambda: CompletenessAssessment(score=0, status="UNKNOWN")
