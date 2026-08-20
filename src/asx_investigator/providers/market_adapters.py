@@ -78,7 +78,18 @@ async def request_captured_json(
             raise
         except httpx.HTTPError as error:
             if not content:
-                raise
+                artifact = capture_provider_payload(
+                    artifacts,
+                    {
+                        "body_empty": True,
+                        "error_code": "NETWORK_ERROR",
+                        "status_code": response.status_code,
+                    },
+                    "application/json",
+                )
+                raise ProviderResponseReadError(
+                    artifact, request=response.request
+                ) from error
             artifact = capture_provider_payload(
                 artifacts,
                 {

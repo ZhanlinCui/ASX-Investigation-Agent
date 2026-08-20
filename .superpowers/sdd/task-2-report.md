@@ -184,3 +184,27 @@ All checks passed!
 
 - This implementation does not claim DNS pinning. It validates the full resolution set immediately before each request and then verifies the connected peer exposed by HTTPX/httpcore before reading or admitting response content. If a future transport stops exposing `network_stream.server_addr`, acquisition fails closed by design.
 - The test run retains pre-existing Starlette/httpx and PyMuPDF/SWIG deprecation warnings; there are no test or lint failures.
+
+## Follow-up Important finding fix
+
+The formal Task 2 review identified one remaining failure-path gap: when an HTTP `Response` had been created but its `aiter_bytes()` stream failed before yielding any bytes, the adapter re-raised the read exception and returned a no-artifact `NETWORK_ERROR`, indistinguishable from a connect failure.
+
+### TDD evidence
+
+Added `test_zero_yield_provider_response_is_frozen_before_read_failure` beside the existing partial-read regression. The new test first failed with `artifact is None`, then passed after the focused production change. It asserts a retryable `NETWORK_ERROR`, a non-null artifact, and canonical metadata containing `body_empty`, `error_code`, and the response `status_code`.
+
+### Fix
+
+`request_captured_json` now captures bounded canonical zero-byte response metadata and raises `ProviderResponseReadError` with its `ArtifactReference` whenever a response stream raises an `httpx.HTTPError`, including before the first byte. Connect failures still occur before a response exists and continue through the generic network-error path with `artifact=None`. No source security limits or unrelated behavior changed.
+
+### Focused verification
+
+```text
+../../.venv/bin/python -m pytest tests/unit/test_p28_live_artifacts.py tests/unit/providers/test_market_adapters.py -v
+16 passed in 0.06s
+
+../../.venv/bin/ruff check src/asx_investigator/providers tests/unit/test_p28_live_artifacts.py tests/unit/providers/test_market_adapters.py
+All checks passed!
+```
+
+Follow-up fix commit: `c39c2fb` (`fix: preserve zero-byte provider response artifacts`).

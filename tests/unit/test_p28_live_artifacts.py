@@ -39,6 +39,13 @@ class _PartialReadFailure(httpx.AsyncByteStream):
         raise httpx.ReadTimeout("read timed out")
 
 
+class _ZeroYieldReadFailure(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        if False:
+            yield b""
+        raise httpx.ReadTimeout("read timed out")
+
+
 async def test_eodhd_success_has_canonical_response_artifact(tmp_path: Path) -> None:
     payload = _daily_bar_payload()
     artifacts = ArtifactStore(tmp_path / "artifacts")
@@ -133,6 +140,32 @@ async def test_partial_provider_response_is_frozen_before_read_failure(
     assert outcome.artifact is not None
     assert json.loads(artifacts.get(outcome.artifact.artifact_id)) == {
         "body": '{"partial":',
+        "error_code": "NETWORK_ERROR",
+        "status_code": 200,
+    }
+
+
+async def test_zero_yield_provider_response_is_frozen_before_read_failure(
+    tmp_path: Path,
+) -> None:
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+    provider = EODHDProvider(
+        "test-token",
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, stream=_ZeroYieldReadFailure())
+            )
+        ),
+        artifacts,
+    )
+
+    outcome = await provider.get_daily_bars("BHP", date(2026, 8, 20))
+
+    assert outcome.status == ProviderStatus.RETRYABLE_FAILURE
+    assert outcome.error_code == "NETWORK_ERROR"
+    assert outcome.artifact is not None
+    assert json.loads(artifacts.get(outcome.artifact.artifact_id)) == {
+        "body_empty": True,
         "error_code": "NETWORK_ERROR",
         "status_code": 200,
     }
