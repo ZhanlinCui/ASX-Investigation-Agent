@@ -35,6 +35,7 @@ from asx_investigator.evidence.parsing import parse_source
 from asx_investigator.evidence.registry import SQLiteEvidenceRegistry
 from asx_investigator.investigation.checkpoints import (
     CHECKPOINT_POLICY_VERSION,
+    CHECKPOINT_SCHEMA_VERSION,
     CheckpointEnvelope,
     InvestigationState,
 )
@@ -116,6 +117,8 @@ class SourceAccepted(BaseModel):
 class CaseManager:
     """Durable case runner with append-only public events."""
 
+    _STARTUP_RECLAIMABLE_STATUSES = ("QUEUED", "RUNNING", "FAILED_RECOVERABLE")
+
     def __init__(
         self,
         service: InvestigationService,
@@ -128,12 +131,18 @@ class CaseManager:
         self.repository = repository
         self.evidence_registry = evidence_registry
         self.tasks: set[asyncio.Task[None]] = set()
+        self._tasks_by_version: dict[str, asyncio.Task[None]] = {}
+        self._case_locks: dict[str, asyncio.Lock] = {}
 
     async def start(self) -> None:
         await self.repository.initialize()
         for record in await self.repository.list_recoverable_versions():
             request = InvestigationRequest.model_validate(record.request_payload)
-            await self._recover_or_branch(record, request)
+            try:
+                await self._recover_or_branch(record, request)
+            except ValueError:
+                # A concurrent request has already superseded this startup record.
+                continue
 
     async def stop(self) -> None:
         if self.tasks:
@@ -159,40 +168,49 @@ class CaseManager:
     async def create_version(
         self, case_id: str, refinement: RefinementRequest
     ) -> CaseVersionRecord:
-        parent = await self.repository.get_case(case_id)
-        payload = dict(parent.request_payload)
-        payload.update(refinement.model_dump(mode="json", exclude_none=True))
-        request = InvestigationRequest.model_validate(payload)
-        child = await self.repository.create_version(
-            case_id,
-            parent_version_id=parent.version_id,
-            request_payload=payload,
-        )
-        await self.repository.append_event(
-            child.version_id,
-            "status",
-            "queued",
-            "QUEUED",
-            {"parent_version_id": parent.version_id},
-        )
-        child = await self.repository.update_status(
-            child.version_id, "RUNNING", active_stage="resolve_instrument"
-        )
-        await self.repository.append_event(
-            child.version_id, "status", "resolve_instrument", "RUNNING"
-        )
-        self._launch(child, request)
-        return child
+        async with self._case_lock(case_id):
+            parent = await self.repository.get_case(case_id)
+            await self._cancel_run(parent.version_id)
+            payload = dict(parent.request_payload)
+            payload.update(refinement.model_dump(mode="json", exclude_none=True))
+            request = InvestigationRequest.model_validate(payload)
+            child = await self.repository.create_version(
+                case_id,
+                parent_version_id=parent.version_id,
+                request_payload=payload,
+            )
+            await self.repository.append_event(
+                child.version_id,
+                "status",
+                "queued",
+                "QUEUED",
+                {"parent_version_id": parent.version_id},
+            )
+            child = await self.repository.update_status(
+                child.version_id, "RUNNING", active_stage="resolve_instrument"
+            )
+            await self.repository.append_event(
+                child.version_id, "status", "resolve_instrument", "RUNNING"
+            )
+            self._launch(child, request)
+            return child
 
     async def retry(self, case_id: str) -> CaseVersionRecord:
         try:
             record = await self.repository.get_case(case_id)
         except KeyError:
             record = await self.repository.get_version(case_id)
+        current = await self.repository.get_case(record.case_id)
+        if current.version_id != record.version_id:
+            raise ValueError("Only the current case version can be retried")
         if record.status != "FAILED_RECOVERABLE":
             raise ValueError("Only FAILED_RECOVERABLE cases can be retried")
         request = InvestigationRequest.model_validate(record.request_payload)
-        return await self._recover_or_branch(record, request)
+        return await self._recover_or_branch(
+            record,
+            request,
+            allowed_statuses=("FAILED_RECOVERABLE",),
+        )
 
     def _launch(
         self,
@@ -205,7 +223,24 @@ class CaseManager:
             name=f"investigation-{record.version_id}",
         )
         self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
+
+        def discard(completed: asyncio.Task[None]) -> None:
+            self.tasks.discard(completed)
+            if self._tasks_by_version.get(record.version_id) is completed:
+                self._tasks_by_version.pop(record.version_id, None)
+
+        self._tasks_by_version[record.version_id] = task
+        task.add_done_callback(discard)
+
+    async def _cancel_run(self, version_id: str) -> None:
+        task = self._tasks_by_version.get(version_id)
+        if task is None or task.done():
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    def _case_lock(self, case_id: str) -> asyncio.Lock:
+        return self._case_locks.setdefault(case_id, asyncio.Lock())
 
     @staticmethod
     def _request_artifact_hash(request: InvestigationRequest) -> str:
@@ -231,6 +266,8 @@ class CaseManager:
             return None, "NO_CHECKPOINT"
         if candidate.policy_version != CHECKPOINT_POLICY_VERSION:
             return None, "POLICY_MISMATCH"
+        if candidate.schema_version != CHECKPOINT_SCHEMA_VERSION:
+            return None, "SCHEMA_MISMATCH"
         try:
             state = InvestigationState.model_validate(candidate.typed_state_json)
             expected_initial_inputs = await self._initial_input_hashes(request)
@@ -261,31 +298,40 @@ class CaseManager:
         self,
         record: CaseVersionRecord,
         request: InvestigationRequest,
+        *,
+        allowed_statuses: tuple[str, ...] = _STARTUP_RECLAIMABLE_STATUSES,
     ) -> CaseVersionRecord:
-        checkpoint, incompatibility = await self._compatible_checkpoint(record, request)
-        if checkpoint is not None:
-            resumed = await self.repository.update_status(
-                record.version_id,
-                "QUEUED",
-                active_stage=checkpoint.stage,
-            )
-            await self.repository.append_event(
-                record.version_id,
-                "recovery",
-                checkpoint.stage,
-                "RESUMED",
-                {"checkpoint_created_at": checkpoint.created_at.isoformat()},
-            )
-            self._launch(resumed, request, checkpoint)
-            return resumed
+        async with self._case_lock(record.case_id):
+            current = await self.repository.get_case(record.case_id)
+            if current.version_id != record.version_id:
+                raise ValueError("Only the current case version can be recovered")
+            record = await self.repository.get_version(record.version_id)
+            if record.status not in allowed_statuses:
+                raise ValueError("Case version cannot be recovered from its current status")
+            checkpoint, incompatibility = await self._compatible_checkpoint(record, request)
+            if checkpoint is not None:
+                resumed = await self.repository.queue_current_checkpoint_resume(
+                    record.version_id,
+                    checkpoint.stage,
+                    allowed_statuses=allowed_statuses,
+                )
+                await self.repository.append_event(
+                    record.version_id,
+                    "recovery",
+                    checkpoint.stage,
+                    "RESUMED",
+                    {"checkpoint_created_at": checkpoint.created_at.isoformat()},
+                )
+                self._launch(resumed, request, checkpoint)
+                return resumed
 
-        child = await self.repository.create_checkpoint_recovery_child(
-            record.version_id,
-            request_payload=request.model_dump(mode="json"),
-            reason=incompatibility or "UNKNOWN",
-        )
-        self._launch(child, request)
-        return child
+            child = await self.repository.create_checkpoint_recovery_child(
+                record.version_id,
+                request_payload=request.model_dump(mode="json"),
+                reason=incompatibility or "UNKNOWN",
+            )
+            self._launch(child, request)
+            return child
 
     async def _run(
         self,

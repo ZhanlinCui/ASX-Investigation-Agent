@@ -110,6 +110,16 @@ class CountingTools:
         return await self.delegate.disclosure_coverage_complete(ticker, trade_date)
 
 
+class InterruptingReasoner:
+    model_configuration = {"provider": "TEST", "structured_calls_max": "2"}
+
+    async def generate(self, packet):
+        raise RuntimeError("deterministic interruption at hypothesis generation")
+
+    async def challenge(self, packet, hypotheses):
+        raise AssertionError("challenge must not run after interrupted generation")
+
+
 def recorded_request() -> InvestigationRequest:
     return InvestigationRequest(
         ticker="BHP",
@@ -153,6 +163,28 @@ async def test_resume_after_market_checkpoint_does_not_repeat_completed_provider
         event.status == "RESUMED" and event.stage == "acquire_market_data"
         for event in events
     )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_retry_queues_only_one_recovery_worker(tmp_path: Path) -> None:
+    repository = SQLiteCaseRepository(tmp_path / "cases.db")
+    tools = CountingTools(fail_once_at="get_corporate_actions")
+    app = create_app(InvestigationService(tools), repository=repository)
+
+    async with app.router.lifespan_context(app):
+        version = await app.state.case_manager.create(recorded_request())
+        await drain_manager(app.state.case_manager)
+        before = dict(tools.calls)
+        attempts = await asyncio.gather(
+            app.state.case_manager.retry(version.version_id),
+            app.state.case_manager.retry(version.version_id),
+            return_exceptions=True,
+        )
+        await drain_manager(app.state.case_manager)
+
+    assert sum(not isinstance(item, Exception) for item in attempts) == 1
+    assert sum(isinstance(item, ValueError) for item in attempts) == 1
+    assert tools.calls["get_corporate_actions"] == before["get_corporate_actions"] + 1
 
 
 @pytest.mark.asyncio
@@ -432,3 +464,182 @@ async def test_resume_after_documents_skips_all_prior_artifact_bearing_providers
     assert tools.calls["disclosure_coverage_complete"] == (
         before["disclosure_coverage_complete"] + 1
     )
+
+
+@pytest.mark.asyncio
+async def test_retry_rejects_superseded_version_even_with_valid_checkpoint(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteCaseRepository(tmp_path / "cases.db")
+    tools = CountingTools(fail_once_at="get_corporate_actions")
+    app = create_app(InvestigationService(tools), repository=repository)
+
+    async with app.router.lifespan_context(app):
+        parent = await app.state.case_manager.create(recorded_request())
+        await drain_manager(app.state.case_manager)
+        assert (await repository.latest_checkpoint(parent.version_id)) is not None
+        current = await repository.create_checkpoint_recovery_child(
+            parent.version_id,
+            request_payload=recorded_request().model_dump(mode="json"),
+            reason="TEST_SUPERSEDED",
+        )
+        await repository.complete_version(
+            current.version_id,
+            report_payload={"status": "COMPLETED"},
+            outcome="EXPLAINED",
+        )
+
+        with pytest.raises(ValueError, match="current"):
+            await app.state.case_manager.retry(parent.version_id)
+
+    persisted_parent = await repository.get_version(parent.version_id)
+    persisted_current = await repository.get_case(parent.case_id)
+    assert persisted_parent.status == "FAILED"
+    assert persisted_current.version_id == current.version_id
+    assert persisted_current.status == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_refinement_supersedes_a_nonterminal_current_version_safely(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteCaseRepository(tmp_path / "cases.db")
+    await repository.initialize()
+    request = recorded_request()
+    current = await repository.create_case(
+        ticker=request.ticker,
+        trade_date=request.trade_date,
+        mode=request.mode,
+        request_payload=request.model_dump(mode="json"),
+    )
+
+    child = await repository.create_version(
+        current.case_id,
+        parent_version_id=current.version_id,
+        request_payload=request.model_dump(mode="json"),
+    )
+
+    assert child.parent_version_id == current.version_id
+    assert (await repository.get_version(current.version_id)).error == "SUPERSEDED_BY_REFINEMENT"
+
+
+@pytest.mark.asyncio
+async def test_late_checkpoint_missing_earlier_prerequisites_creates_child(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteCaseRepository(tmp_path / "cases.db")
+    service = InvestigationService(
+        CountingTools(),
+        reasoner=InterruptingReasoner(),
+    )
+    app = create_app(service, repository=repository)
+
+    async with app.router.lifespan_context(app):
+        version = await app.state.case_manager.create(recorded_request())
+        await drain_manager(app.state.case_manager)
+        latest = await repository.latest_checkpoint(version.version_id)
+        assert latest is not None
+        assert latest.stage == "assemble_evidence_packet"
+        malformed_state = dict(latest.typed_state_json)
+        malformed_state["instrument"] = None
+        malformed_state["session"] = None
+        malformed_state["corporate_actions"] = None
+        async with aiosqlite.connect(repository.database_path) as connection:
+            await connection.execute(
+                """UPDATE checkpoints SET typed_state_json = ?
+                WHERE version_id = ? AND stage = 'assemble_evidence_packet'""",
+                (json.dumps(malformed_state), version.version_id),
+            )
+            await connection.commit()
+
+        child = await app.state.case_manager.retry(version.version_id)
+        await drain_manager(app.state.case_manager)
+
+    assert child.parent_version_id == version.version_id
+    assert child.version_id != version.version_id
+    assert (await repository.get_version(version.version_id)).status == "FAILED"
+
+
+@pytest.mark.parametrize("mutation", ["alter_market", "omit_corporate"])
+@pytest.mark.asyncio
+async def test_late_checkpoint_cross_checks_every_prior_artifact_output(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository = SQLiteCaseRepository(tmp_path / f"{mutation}.db")
+    tools = CountingTools(
+        fail_once_at="disclosure_coverage_complete",
+        with_artifacts=True,
+    )
+    app = create_app(InvestigationService(tools), repository=repository)
+
+    async with app.router.lifespan_context(app):
+        version = await app.state.case_manager.create(recorded_request())
+        await drain_manager(app.state.case_manager)
+        latest = await repository.latest_checkpoint(version.version_id)
+        assert latest is not None
+        state = dict(latest.typed_state_json)
+        stage_outputs = dict(state["stage_output_artifact_hashes"])
+        inputs = list(latest.input_artifact_hashes)
+        if mutation == "alter_market":
+            stage_outputs["acquire_market_data"] = ["c" * 64]
+            inputs = ["c" * 64 if value == "a" * 64 else value for value in inputs]
+        else:
+            stage_outputs["test_mechanical_explanations"] = []
+            inputs = [value for value in inputs if value != "b" * 64]
+        state["stage_output_artifact_hashes"] = stage_outputs
+        async with aiosqlite.connect(repository.database_path) as connection:
+            await connection.execute(
+                """UPDATE checkpoints SET typed_state_json = ?,
+                input_artifact_hashes_json = ?
+                WHERE version_id = ? AND stage = 'discover_and_freeze_documents'""",
+                (json.dumps(state), json.dumps(inputs), version.version_id),
+            )
+            await connection.commit()
+
+        child = await app.state.case_manager.retry(version.version_id)
+        await drain_manager(app.state.case_manager)
+
+    assert child.parent_version_id == version.version_id
+    assert child.version_id != version.version_id
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("policy_version", "phase2-v2", "policy"),
+        ("schema_version", "checkpoint-v2", "schema"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_service_rejects_unsupported_checkpoint_contract_before_resume(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    repository = SQLiteCaseRepository(tmp_path / f"{field}.db")
+    tools = CountingTools(fail_once_at="get_corporate_actions")
+    service = InvestigationService(tools)
+    app = create_app(service, repository=repository)
+
+    async with app.router.lifespan_context(app):
+        version = await app.state.case_manager.create(recorded_request())
+        await drain_manager(app.state.case_manager)
+
+    checkpoint = await repository.latest_checkpoint(version.version_id)
+    assert checkpoint is not None
+    state = InvestigationState.model_validate(checkpoint.typed_state_json)
+    incompatible = checkpoint.model_copy(update={field: value})
+    before = dict(tools.calls)
+    with pytest.raises(ValueError, match=message):
+        await service.investigate(
+            "BHP",
+            date(2026, 8, 20),
+            mode="RECORDED",
+            version_id=version.version_id,
+            request_artifact_hash=state.request_artifact_hash,
+            input_artifact_hashes=state.initial_input_artifact_hashes,
+            resume_checkpoint=incompatible,
+        )
+    assert tools.calls == before

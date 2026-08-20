@@ -104,10 +104,10 @@ async def test_startup_does_not_recover_a_superseded_nonterminal_version(
         "FAILED_RECOVERABLE",
         active_stage="acquire_market_data",
     )
-    current = await repository.create_version(
-        parent.case_id,
-        parent_version_id=parent.version_id,
+    current = await repository.create_checkpoint_recovery_child(
+        parent.version_id,
         request_payload=request.model_dump(mode="json"),
+        reason="TEST_SUPERSEDED",
     )
     await repository.complete_version(
         current.version_id,
@@ -126,3 +126,37 @@ async def test_startup_does_not_recover_a_superseded_nonterminal_version(
     restored = await restarted_repository.get_case(parent.case_id)
     assert restored.version_id == current.version_id
     assert restored.status == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_startup_reclaims_running_current_version_with_valid_checkpoint(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "cases.db"
+    interrupted_repository = SQLiteCaseRepository(database_path)
+    interrupted_tools = CountingTools(fail_once_at="get_corporate_actions")
+    interrupted_app = create_app(
+        InvestigationService(interrupted_tools), repository=interrupted_repository
+    )
+
+    async with interrupted_app.router.lifespan_context(interrupted_app):
+        version = await interrupted_app.state.case_manager.create(recorded_request())
+        await drain_manager(interrupted_app.state.case_manager)
+        await interrupted_repository.update_status(
+            version.version_id,
+            "RUNNING",
+            active_stage="acquire_market_data",
+        )
+
+    restarted_repository = SQLiteCaseRepository(database_path)
+    restarted_tools = CountingTools()
+    restarted_app = create_app(
+        InvestigationService(restarted_tools), repository=restarted_repository
+    )
+    async with restarted_app.router.lifespan_context(restarted_app):
+        await drain_manager(restarted_app.state.case_manager)
+
+    restored = await restarted_repository.get_version(version.version_id)
+    assert restored.status == "COMPLETED"
+    assert restarted_tools.calls.get("resolve_instrument", 0) == 0
+    assert restarted_tools.calls.get("get_market_data", 0) == 0

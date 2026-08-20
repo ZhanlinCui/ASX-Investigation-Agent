@@ -461,47 +461,67 @@ class SQLiteCaseRepository:
         parent_version_id: str,
         request_payload: dict[str, object],
     ) -> CaseVersionRecord:
-        parent = await self.get_version(parent_version_id)
-        if parent.case_id != case_id:
-            raise KeyError(parent_version_id)
         version_id = str(uuid4())
         now = datetime.now(UTC).isoformat()
         async with aiosqlite.connect(self.database_path) as connection:
             await connection.execute("PRAGMA foreign_keys=ON")
             await connection.execute("BEGIN IMMEDIATE")
-            row = await (
+            try:
+                parent_row = await (
+                    await connection.execute(
+                        """SELECT v.case_id, v.status, c.current_version_id
+                        FROM case_versions v JOIN cases c ON c.case_id = v.case_id
+                        WHERE v.version_id = ?""",
+                        (parent_version_id,),
+                    )
+                ).fetchone()
+                if parent_row is None or str(parent_row[0]) != case_id:
+                    raise KeyError(parent_version_id)
+                if str(parent_row[2]) != parent_version_id:
+                    raise ValueError("Only the current case version can be refined")
+                if str(parent_row[1]) not in self.TERMINAL_STATUSES:
+                    await connection.execute(
+                        """UPDATE case_versions SET status = 'FAILED',
+                        error = 'SUPERSEDED_BY_REFINEMENT', updated_at = ?
+                        WHERE version_id = ?""",
+                        (now, parent_version_id),
+                    )
+                row = await (
+                    await connection.execute(
+                        """SELECT COALESCE(MAX(version_number), 0) + 1
+                        FROM case_versions WHERE case_id = ?""",
+                        (case_id,),
+                    )
+                ).fetchone()
+                assert row is not None
+                version_number = int(row[0])
                 await connection.execute(
-                    """SELECT COALESCE(MAX(version_number), 0) + 1
-                    FROM case_versions WHERE case_id = ?""",
-                    (case_id,),
+                    """INSERT INTO case_versions
+                    (version_id, case_id, version_number, parent_version_id, status, outcome,
+                     active_stage, request_json, report_json, error, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 'QUEUED', NULL, NULL, ?, NULL, NULL, ?, ?)""",
+                    (
+                        version_id,
+                        case_id,
+                        version_number,
+                        parent_version_id,
+                        self._serialize_case_payload(request_payload),
+                        now,
+                        now,
+                    ),
                 )
-            ).fetchone()
-            assert row is not None
-            version_number = int(row[0])
-            await connection.execute(
-                """INSERT INTO case_versions
-                (version_id, case_id, version_number, parent_version_id, status, outcome,
-                 active_stage, request_json, report_json, error, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'QUEUED', NULL, NULL, ?, NULL, NULL, ?, ?)""",
-                (
-                    version_id,
-                    case_id,
-                    version_number,
-                    parent_version_id,
-                    self._serialize_case_payload(request_payload),
-                    now,
-                    now,
-                ),
-            )
-            await connection.execute(
-                "UPDATE case_versions SET request_schema_version = ? WHERE version_id = ?",
-                ("case-payload-v1", version_id),
-            )
-            await connection.execute(
-                "UPDATE cases SET current_version_id = ?, updated_at = ? WHERE case_id = ?",
-                (version_id, now, case_id),
-            )
-            await connection.commit()
+                await connection.execute(
+                    "UPDATE case_versions SET request_schema_version = ? WHERE version_id = ?",
+                    ("case-payload-v1", version_id),
+                )
+                await connection.execute(
+                    "UPDATE cases SET current_version_id = ?, updated_at = ? WHERE case_id = ?",
+                    (version_id, now, case_id),
+                )
+                await connection.commit()
+            except Exception:
+                await connection.rollback()
+                raise
         return await self.get_version(version_id)
 
     async def create_checkpoint_recovery_child(
@@ -612,6 +632,45 @@ class SQLiteCaseRepository:
                         ),
                         now,
                     ),
+                )
+                await connection.commit()
+            except Exception:
+                await connection.rollback()
+                raise
+        return await self.get_version(version_id)
+
+    async def queue_current_checkpoint_resume(
+        self,
+        version_id: str,
+        stage: str,
+        *,
+        allowed_statuses: tuple[str, ...] = ("FAILED_RECOVERABLE",),
+    ) -> CaseVersionRecord:
+        """Atomically queue a resumable checkpoint only for the current case version."""
+
+        now = datetime.now(UTC).isoformat()
+        async with aiosqlite.connect(self.database_path) as connection:
+            await connection.execute("PRAGMA foreign_keys=ON")
+            await connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = await (
+                    await connection.execute(
+                        """SELECT v.status, c.current_version_id
+                        FROM case_versions v JOIN cases c ON c.case_id = v.case_id
+                        WHERE v.version_id = ?""",
+                        (version_id,),
+                    )
+                ).fetchone()
+                if row is None:
+                    raise KeyError(version_id)
+                if str(row[1]) != version_id:
+                    raise ValueError("Only the current case version can be resumed")
+                if str(row[0]) not in allowed_statuses:
+                    raise ValueError("Case version cannot be resumed from its current status")
+                await connection.execute(
+                    """UPDATE case_versions SET status = 'QUEUED', active_stage = ?,
+                    error = NULL, updated_at = ? WHERE version_id = ?""",
+                    (stage, now, version_id),
                 )
                 await connection.commit()
             except Exception:

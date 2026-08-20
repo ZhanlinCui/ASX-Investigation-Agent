@@ -42,6 +42,7 @@ from asx_investigator.evidence.context import EvidencePacket, build_evidence_pac
 from asx_investigator.evidence.validation import validate_claims
 from asx_investigator.investigation.checkpoints import (
     CHECKPOINT_POLICY_VERSION,
+    CHECKPOINT_SCHEMA_VERSION,
     CheckpointEnvelope,
     InvestigationState,
     MarketDataCheckpoint,
@@ -92,6 +93,10 @@ class InvestigationService:
             raise ValueError("checkpointing requires a sealed request artifact hash")
 
         if resume_checkpoint is not None:
+            if resume_checkpoint.policy_version != CHECKPOINT_POLICY_VERSION:
+                raise ValueError("checkpoint policy is not supported")
+            if resume_checkpoint.schema_version != CHECKPOINT_SCHEMA_VERSION:
+                raise ValueError("checkpoint schema is not supported")
             state = InvestigationState.model_validate(resume_checkpoint.typed_state_json)
             current_input_hashes = sorted(set(input_artifact_hashes or []))
             if (

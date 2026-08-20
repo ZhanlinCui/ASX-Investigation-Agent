@@ -21,6 +21,7 @@ from asx_investigator.providers.market import CorporateAction, MarketDataResult
 from asx_investigator.providers.outcomes import ProviderOutcome
 
 CHECKPOINT_POLICY_VERSION = "phase2-v1"
+CHECKPOINT_SCHEMA_VERSION = "checkpoint-v1"
 
 DURABLE_STAGE_ORDER = (
     "resolve_instrument",
@@ -100,44 +101,6 @@ class InvestigationState(BaseModel):
             raise ValueError("checkpoint completed_stage is not durable")
         if self.completed_stage not in self.stage_output_artifact_hashes:
             raise ValueError("checkpoint is missing frozen output hashes for its stage")
-        required: dict[str, tuple[str, ...]] = {
-            "resolve_instrument": ("instrument",),
-            "resolve_asx_session": ("instrument", "session"),
-            "acquire_market_data": ("instrument", "session", "market_data"),
-            "test_mechanical_explanations": (
-                "instrument",
-                "session",
-                "market_data",
-                "corporate_actions",
-            ),
-            "discover_and_freeze_documents": (
-                "instrument",
-                "session",
-                "market_data",
-                "corporate_actions",
-                "evidence",
-            ),
-            "extract_exact_passages": (
-                "market_data",
-                "corporate_actions",
-                "evidence",
-                "coverage_complete",
-                "coverage_gaps",
-                "conflicts",
-            ),
-            "assemble_evidence_packet": ("market_data", "evidence", "packet"),
-            "generate_ranked_hypotheses": ("packet", "hypothesis_batch"),
-            "targeted_retrieval": ("evidence", "packet", "hypothesis_batch"),
-            "challenge_leading_hypothesis": (
-                "packet",
-                "hypothesis_batch",
-                "challenge",
-            ),
-            "deterministic_validation": ("packet", "hypothesis_batch", "challenge"),
-        }
-        missing = [name for name in required[self.completed_stage] if getattr(self, name) is None]
-        if missing:
-            raise ValueError(f"checkpoint is missing completed state: {', '.join(missing)}")
         boundary = DURABLE_STAGE_ORDER.index(self.completed_stage)
         introduced_at = {
             "instrument": "resolve_instrument",
@@ -152,6 +115,19 @@ class InvestigationState(BaseModel):
             "hypothesis_batch": "generate_ranked_hypotheses",
             "challenge": "challenge_leading_hypothesis",
         }
+        required_state = [
+            name
+            for name, stage in introduced_at.items()
+            if DURABLE_STAGE_ORDER.index(stage) <= boundary
+        ]
+        missing = [name for name in required_state if getattr(self, name) is None]
+        if missing:
+            raise ValueError(f"checkpoint is missing completed state: {', '.join(missing)}")
+        if (
+            boundary >= DURABLE_STAGE_ORDER.index("test_mechanical_explanations")
+            and not self.validations
+        ):
+            raise ValueError("checkpoint is missing completed mechanical validations")
         future = [
             name
             for name, stage in introduced_at.items()
@@ -173,8 +149,17 @@ class InvestigationState(BaseModel):
         ]
         if invalid_output_stages:
             raise ValueError("checkpoint contains output hashes beyond its completed stage")
-        if self.output_hashes() != self._derived_output_hashes(self.completed_stage):
-            raise ValueError("checkpoint output hashes do not match completed state")
+        required_output_stages = DURABLE_STAGE_ORDER[: boundary + 1]
+        missing_output_stages = [
+            stage
+            for stage in required_output_stages
+            if stage not in self.stage_output_artifact_hashes
+        ]
+        if missing_output_stages:
+            raise ValueError("checkpoint is missing prior stage output hashes")
+        for stage in required_output_stages:
+            if self.output_hashes(stage) != self._derived_output_hashes(stage):
+                raise ValueError("checkpoint output hashes do not match completed state")
         if self.evidence is not None:
             evidence_hashes = {
                 _normalized_hash(item.content_hash) for item in self.evidence
@@ -191,8 +176,14 @@ class InvestigationState(BaseModel):
     def complete(self, stage: str) -> None:
         if stage not in DURABLE_STAGE_ORDER:
             raise ValueError(f"{stage} is not a durable checkpoint stage")
+        boundary = DURABLE_STAGE_ORDER.index(stage)
         self.stage_output_artifact_hashes = {
             **self.stage_output_artifact_hashes,
+            **{
+                earlier_stage: self._derived_output_hashes(earlier_stage)
+                for earlier_stage in DURABLE_STAGE_ORDER[:boundary]
+                if earlier_stage not in self.stage_output_artifact_hashes
+            },
             stage: self._derived_output_hashes(stage),
         }
         self.completed_stage = stage
