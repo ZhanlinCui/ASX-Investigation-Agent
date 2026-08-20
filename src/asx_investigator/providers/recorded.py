@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, InstrumentIdentity
 from asx_investigator.market.forensics import DailyBar
+from asx_investigator.providers.market import MarketDataResult
+from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 
 SYDNEY = ZoneInfo("Australia/Sydney")
 
@@ -62,6 +64,23 @@ class RecordedToolGateway:
 
     async def get_benchmark_return(self, trade_date: date) -> float | None:
         return 1.0 if trade_date == date(2026, 8, 20) else None
+
+    async def get_market_data(self, ticker: str, trade_date: date) -> MarketDataResult:
+        bars = await self.get_daily_bars(ticker, trade_date)
+        return MarketDataResult(
+            bars=bars,
+            selected_provider="RECORDED_FIXTURE",
+            outcomes=[
+                ProviderOutcome[list[DailyBar]](
+                    status=ProviderStatus.SUCCESS,
+                    provider="RECORDED_FIXTURE",
+                    retrieved_at=datetime(2026, 8, 20, 16, 30, tzinfo=SYDNEY),
+                    coverage="COMPLETE",
+                    data=bars,
+                    source_version="recorded-v1",
+                )
+            ],
+        )
 
     async def get_evidence(self, ticker: str, trade_date: date) -> list[EvidenceItem]:
         if ticker.upper() != "BHP" or trade_date != date(2026, 8, 20):

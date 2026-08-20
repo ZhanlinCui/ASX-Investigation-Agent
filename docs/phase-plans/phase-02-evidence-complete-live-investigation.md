@@ -61,12 +61,12 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 
 ### P2.2: Live market truth
 
-- [ ] Wrap EODHD and Marketstack in the same typed market-data interface.
-- [ ] Use EODHD when complete; use Marketstack only on empty or failed primary coverage.
-- [ ] Compare sources when both are available. Record OHLC differences above 0.5% and volume differences above 5%.
-- [ ] Preserve selected source, rejected values and conflict reason.
-- [ ] Add corporate-action and benchmark-context interfaces without inferring unavailable values.
-- [ ] Gate: provider contract, fallback, disagreement and live-window tests pass.
+- [x] Wrap EODHD and Marketstack in the same typed market-data interface.
+- [x] Use EODHD when complete; use Marketstack only on empty, partial or failed primary coverage.
+- [x] Compare sources when both are available. Record OHLC differences above 0.5% and volume differences above 5%.
+- [x] Preserve selected source, rejected values and conflict reason.
+- [x] Add corporate-action and benchmark-context interfaces without inferring unavailable values.
+- [x] Gate: provider contract, fallback, disagreement and live-window tests pass.
 
 ### P2.3: Evidence and context
 

@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, InstrumentIdentity
 from asx_investigator.market.forensics import DailyBar
+from asx_investigator.providers.market import (
+    MarketDataReconciler,
+    MarketDataResult,
+    MarketDataUnavailable,
+    within_live_window,
+)
+from asx_investigator.providers.market_adapters import EODHDProvider, MarketstackProvider
 from asx_investigator.settings import Settings
 
 SYDNEY = ZoneInfo("Australia/Sydney")
@@ -57,34 +64,24 @@ class LiveToolGateway:
         )
 
     async def get_daily_bars(self, ticker: str, trade_date: date) -> list[DailyBar]:
-        token = self._require_eodhd()
-        response = await self.client.get(
-            f"https://eodhd.com/api/eod/{ticker.upper()}.AU",
-            params={
-                "api_token": token,
-                "fmt": "json",
-                "from": (trade_date - timedelta(days=120)).isoformat(),
-                "to": trade_date.isoformat(),
-            },
-        )
-        response.raise_for_status()
-        rows = response.json()
-        bars = [
-            DailyBar(
-                trade_date=date.fromisoformat(row["date"]),
-                open=float(row["open"]),
-                high=float(row["high"]),
-                low=float(row["low"]),
-                close=float(row["close"]),
-                adjusted_close=float(row.get("adjusted_close", row["close"])),
-                volume=int(row["volume"]),
+        return (await self.get_market_data(ticker, trade_date)).bars
+
+    async def get_market_data(self, ticker: str, trade_date: date) -> MarketDataResult:
+        if not within_live_window(trade_date, today=date.today()):
+            raise DataProviderUnavailable(
+                "The requested date is outside the trailing 12-month live window"
             )
-            for row in rows
-            if row.get("date") and row.get("close") is not None
-        ]
-        if len(bars) < 41 or bars[-1].trade_date != trade_date:
-            raise DataProviderUnavailable("Insufficient EOD history for the requested ASX session")
-        return bars
+        primary = EODHDProvider(self._require_eodhd(), self.client)
+        fallback = (
+            MarketstackProvider(self.settings.marketstack_api_key, self.client)
+            if self.settings.marketstack_api_key
+            else None
+        )
+        try:
+            return await MarketDataReconciler(primary, fallback).acquire(ticker, trade_date)
+        except MarketDataUnavailable as error:
+            codes = ", ".join(item.error_code or str(item.status) for item in error.outcomes)
+            raise DataProviderUnavailable(f"Market data unavailable: {codes}") from error
 
     async def get_benchmark_return(self, trade_date: date) -> float | None:
         # Return None if no benchmark entitlement is configured: downstream

@@ -8,8 +8,11 @@ from asx_investigator.confidence.scoring import ConfidenceFeatures, score_confid
 from asx_investigator.domain.models import (
     Claim,
     ClaimType,
+    CompletenessAssessment,
+    CoverageGap,
     EvidenceItem,
     EvidenceRole,
+    InvestigationOutcome,
     InvestigationReport,
     InvestigationStatus,
     PrimaryAssessment,
@@ -46,7 +49,8 @@ class InvestigationService:
             return InvestigationReport(
                 case_id=str(uuid4()),
                 run_id=str(uuid4()),
-                status=InvestigationStatus.PARTIAL,
+                status=InvestigationStatus.COMPLETED,
+                outcome=InvestigationOutcome.INCOMPLETE_DATA,
                 ticker=normalized_ticker,
                 trade_date=requested_date,
                 timezone_label=session.timezone_label,
@@ -57,11 +61,18 @@ class InvestigationService:
                 confidence=score_confidence(
                     ConfidenceFeatures(0, 0, 0, 0, 0, 0, has_primary_evidence=False)
                 ),
+                completeness=CompletenessAssessment(
+                    score=0,
+                    status="INCOMPLETE",
+                    required_capabilities=["asx_trading_session"],
+                    missing_capabilities=["asx_trading_session"],
+                ),
                 coverage_status="NOT_A_TRADING_DAY",
                 trace=trace,
             )
 
-        bars = await self.tools.get_daily_bars(normalized_ticker, requested_date)
+        market_data = await self.tools.get_market_data(normalized_ticker, requested_date)
+        bars = market_data.bars
         benchmark_return = await self.tools.get_benchmark_return(requested_date)
         market_move = calculate_market_move(bars, benchmark_return)
         trace.append({"node": "market_forensics", "status": "COMPLETED"})
@@ -73,6 +84,17 @@ class InvestigationService:
         coverage_complete = await self.tools.disclosure_coverage_complete(
             normalized_ticker, requested_date
         )
+        coverage_gaps = [market_data.coverage_gap] if market_data.coverage_gap else []
+        if not coverage_complete:
+            coverage_gaps.append(
+                CoverageGap(
+                    gap_id="DISCLOSURE_COVERAGE_PARTIAL",
+                    capability="issuer_disclosures",
+                    provider="issuer_ir",
+                    reason="A complete point-in-time issuer disclosure archive was unavailable.",
+                    impact="Causal confidence is capped and no-catalyst cannot be concluded.",
+                )
+            )
 
         if causal:
             leading = causal[0]
@@ -130,7 +152,14 @@ class InvestigationService:
         return InvestigationReport(
             case_id=str(uuid4()),
             run_id=str(uuid4()),
-            status=InvestigationStatus.COMPLETED if causal else InvestigationStatus.PARTIAL,
+            status=InvestigationStatus.COMPLETED,
+            outcome=(
+                InvestigationOutcome.EXPLAINED
+                if causal
+                else InvestigationOutcome.NO_IDENTIFIABLE_CATALYST
+                if coverage_complete
+                else InvestigationOutcome.INSUFFICIENT_EVIDENCE
+            ),
             ticker=normalized_ticker,
             trade_date=requested_date,
             timezone_label=session.timezone_label,
@@ -140,6 +169,18 @@ class InvestigationService:
             claims=[claim],
             evidence=evidence,
             confidence=confidence,
+            completeness=CompletenessAssessment(
+                score=1.0 if coverage_complete and not market_data.coverage_gap else 0.5,
+                status=(
+                    "COMPLETE"
+                    if coverage_complete and not market_data.coverage_gap
+                    else "PARTIAL"
+                ),
+                required_capabilities=["market_data", "issuer_disclosures"],
+                missing_capabilities=[gap.capability for gap in coverage_gaps],
+            ),
+            coverage_gaps=coverage_gaps,
+            conflicts=market_data.conflicts,
             coverage_status="COMPLETE" if coverage_complete else "PARTIAL_DISCLOSURE_COVERAGE",
             trace=trace,
         )
