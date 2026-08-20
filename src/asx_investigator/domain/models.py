@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ClaimType(StrEnum):
@@ -50,6 +50,16 @@ class ValidationStatus(StrEnum):
     PASS = "PASS"
     FAIL = "FAIL"
     NOT_AVAILABLE = "NOT_AVAILABLE"
+
+
+class CausalMechanism(StrEnum):
+    MECHANICAL = "MECHANICAL"
+    ISSUER_EVENT = "ISSUER_EVENT"
+    SECTOR_READTHROUGH = "SECTOR_READTHROUGH"
+    COMMODITY_FX = "COMMODITY_FX"
+    MACRO_MARKET = "MACRO_MARKET"
+    MARKET_STRUCTURE = "MARKET_STRUCTURE"
+    UNKNOWN = "UNKNOWN"
 
 
 class InstrumentIdentity(BaseModel):
@@ -105,6 +115,39 @@ class EvidenceItem(BaseModel):
     locator: str | None = None
     supports_claim_ids: list[str] = Field(default_factory=list)
     contradicts_claim_ids: list[str] = Field(default_factory=list)
+
+
+class EvidenceAssertion(BaseModel):
+    """Extractive, case-scoped evidence available to causal reasoning."""
+
+    assertion_id: str = Field(pattern=r"^A[1-9][0-9]*$")
+    evidence_id: str
+    case_version_id: str = Field(min_length=1)
+    exact_text: str = Field(min_length=1, max_length=1_800)
+    span_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    published_at: datetime
+    retrieved_at: datetime
+    source_authority: str = Field(min_length=1, max_length=80)
+    locator: str | None = Field(default=None, max_length=520)
+    role: EvidenceRole
+    causal_eligible: bool
+    mechanism_hint: CausalMechanism = CausalMechanism.UNKNOWN
+    normalized_entities: list[str] = Field(default_factory=list)
+    normalized_values: dict[str, float] = Field(default_factory=dict)
+    contradicting_assertion_ids: list[str] = Field(default_factory=list)
+
+
+class MechanismTest(BaseModel):
+    test_id: str = Field(pattern=r"^MT-[A-Z0-9_-]+$")
+    mechanism: CausalMechanism
+    status: ValidationStatus
+    summary: str = Field(min_length=1, max_length=520)
+    taxonomy_version: str = Field(min_length=1, max_length=80)
+    policy_version: str = Field(min_length=1, max_length=80)
+    created_at: datetime
+    supporting_assertion_ids: list[str] = Field(default_factory=list)
+    contradicting_assertion_ids: list[str] = Field(default_factory=list)
 
 
 class Claim(BaseModel):
@@ -202,6 +245,97 @@ class CheckpointSummary(BaseModel):
     policy_version: str
 
 
+class LedgerEntry(BaseModel):
+    sequence: int = Field(ge=1)
+    stage: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    input_hashes: list[str] = Field(default_factory=list)
+    output_hashes: list[str] = Field(default_factory=list)
+    schema_version: str = Field(min_length=1, max_length=80)
+    policy_version: str = Field(min_length=1)
+    model_configuration: dict[str, str] = Field(default_factory=dict)
+    validation_status: ValidationStatus | None = None
+    validation_summary: str | None = Field(default=None, max_length=520)
+    created_at: datetime
+
+
+class BandCalibrationMetadata(BaseModel):
+    eligible_cases: int = Field(ge=0)
+    correct_cases: int = Field(ge=0)
+    acceptable_alternative_cases: int = Field(ge=0)
+    abstained_cases: int = Field(ge=0)
+    material_errors: int = Field(ge=0)
+    status: str = Field(min_length=1)
+    observed_correct_proportion: float = Field(default=0.0, ge=0, le=1)
+    observed_acceptable_alternative_proportion: float = Field(default=0.0, ge=0, le=1)
+    observed_abstention_proportion: float = Field(default=0.0, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_counts_and_compute_proportions(self) -> BandCalibrationMetadata:
+        counts = {
+            "correct_cases": self.correct_cases,
+            "acceptable_alternative_cases": self.acceptable_alternative_cases,
+            "abstained_cases": self.abstained_cases,
+            "material_errors": self.material_errors,
+        }
+        for name, count in counts.items():
+            if count > self.eligible_cases:
+                raise ValueError(f"{name} cannot exceed eligible_cases")
+        if (
+            self.correct_cases
+            + self.acceptable_alternative_cases
+            + self.abstained_cases
+            + self.material_errors
+            > self.eligible_cases
+        ):
+            raise ValueError(
+                "calibration outcome counts cannot exceed eligible_cases"
+            )
+        if not self.eligible_cases:
+            if any(
+                (
+                    self.observed_correct_proportion,
+                    self.observed_acceptable_alternative_proportion,
+                    self.observed_abstention_proportion,
+                )
+            ):
+                raise ValueError("zero eligible cases require zero observed proportions")
+            return self
+        self.observed_correct_proportion = self.correct_cases / self.eligible_cases
+        self.observed_acceptable_alternative_proportion = (
+            self.acceptable_alternative_cases / self.eligible_cases
+        )
+        self.observed_abstention_proportion = self.abstained_cases / self.eligible_cases
+        return self
+
+
+class CalibrationMetadata(BaseModel):
+    label: str = "Evidence-strength band calibration"
+    status: str = "NOT_RUN"
+    corpus_version: str | None = None
+    confidence_rule_version: str | None = None
+    created_at: datetime | None = None
+    creation_commit: str | None = Field(default=None, pattern=r"^[0-9a-f]{7,64}$")
+    bands: dict[str, BandCalibrationMetadata] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_artifact_provenance(self) -> CalibrationMetadata:
+        if (self.created_at is None) != (self.creation_commit is None):
+            raise ValueError(
+                "calibration created_at and creation_commit must be recorded together"
+            )
+        if self.status != "NOT_RUN" and (
+            self.created_at is None
+            or self.creation_commit is None
+            or self.corpus_version is None
+            or self.confidence_rule_version is None
+        ):
+            raise ValueError(
+                "measured calibration metadata requires corpus, rule and creation provenance"
+            )
+        return self
+
+
 class ProviderCallDiagnostic(BaseModel):
     provider: str
     operation: str
@@ -242,6 +376,10 @@ class InvestigationReport(BaseModel):
     provider_diagnostics: list[ProviderCallDiagnostic] = Field(default_factory=list)
     artifact_hashes: list[str] = Field(default_factory=list)
     checkpoint_lineage: list[CheckpointSummary] = Field(default_factory=list)
+    assertions: list[EvidenceAssertion] = Field(default_factory=list)
+    mechanism_tests: list[MechanismTest] = Field(default_factory=list)
+    ledger: list[LedgerEntry] = Field(default_factory=list)
+    calibration_metadata: CalibrationMetadata = Field(default_factory=CalibrationMetadata)
     trace_reference: TraceReference | None = None
     parent_case_id: str | None = None
     parent_version_id: str | None = None

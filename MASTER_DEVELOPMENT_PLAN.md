@@ -1,9 +1,10 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 20 August 2026  
-**Product stage:** Phase 2.8 recorded release candidate
+**Product stage:** Phase 3.0 contracts complete; Phase 3.1 kernel next; Phase 2.8 recorded release candidate
 
-**Authoritative phase plan:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
+**Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
+**Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
 **Next-stage design:** `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md`
 
 ## Product contract
@@ -57,7 +58,7 @@ Each milestone uses test-first implementation and an independent review checkpoi
 - A clean checkout runs recorded mode, the API, the UI build and the evaluation smoke suite.
 - Live completion requires externally supplied provider credentials. Without them, the release report states that the live gate was not run.
 
-## Proposed Phase 3: Causal Investigation Intelligence
+## Phase 3: Causal Investigation Intelligence
 
 Phase 3 will replace the current coarse hypothesis interface with assertion-bound hypotheses and a deterministic claim compiler. It will add an append-only investigation ledger, explicit shared-memory admission rules, production-path real-case evaluation and empirical calibration metadata for the existing confidence bands.
 
@@ -70,7 +71,7 @@ The proposed sequence is:
 5. publish calibration counts and release gates;
 6. close credentialed Live evidence and workbench gates.
 
-The design is not yet an implementation claim. Phase 2.8 remains the current recorded release candidate, and all missing external gates remain `NOT_RUN`.
+P3.0 completed the domain contract and documentation baseline. P3.1 will implement the typed investigation kernel and append-only decision ledger. Phase 2.8 remains the current runnable recorded release candidate, and all missing external gates remain `NOT_RUN`.
 
 ## Architecture boundaries
 
