@@ -1,12 +1,16 @@
 from datetime import date
+from pathlib import Path
 
 import httpx
 
 from asx_investigator.providers.live import LiveToolGateway
 from asx_investigator.settings import Settings
+from asx_investigator.storage.artifacts import ArtifactStore
 
 
-async def test_tavily_results_remain_discovery_only_even_for_investor_urls() -> None:
+async def test_tavily_results_remain_discovery_only_even_for_investor_urls(
+    tmp_path: Path,
+) -> None:
     payload = {
         "results": [
             {
@@ -20,7 +24,11 @@ async def test_tavily_results_remain_discovery_only_even_for_investor_urls() -> 
     client = httpx.AsyncClient(
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
     )
-    gateway = LiveToolGateway(Settings(tavily_api_key="secret"), client)
+    gateway = LiveToolGateway(
+        Settings(tavily_api_key="secret"),
+        client,
+        artifacts=ArtifactStore(tmp_path),
+    )
 
     evidence = await gateway.get_evidence("BHP", date(2026, 8, 20))
 
@@ -28,7 +36,7 @@ async def test_tavily_results_remain_discovery_only_even_for_investor_urls() -> 
     assert evidence[0].authority == "DISCOVERY_ONLY"
 
 
-async def test_targeted_retrieval_uses_exact_gap_query_once() -> None:
+async def test_targeted_retrieval_uses_exact_gap_query_once(tmp_path: Path) -> None:
     requests: list[httpx.Request] = []
 
     def responder(request: httpx.Request) -> httpx.Response:
@@ -38,6 +46,7 @@ async def test_targeted_retrieval_uses_exact_gap_query_once() -> None:
     gateway = LiveToolGateway(
         Settings(tavily_api_key="secret"),
         httpx.AsyncClient(transport=httpx.MockTransport(responder)),
+        artifacts=ArtifactStore(tmp_path),
     )
 
     result = await gateway.targeted_retrieve(

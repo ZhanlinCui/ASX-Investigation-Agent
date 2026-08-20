@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 import httpx
 
@@ -8,13 +9,16 @@ from asx_investigator.providers.market_adapters import (
     MarketstackProvider,
 )
 from asx_investigator.providers.outcomes import ProviderStatus
+from asx_investigator.storage.artifacts import ArtifactStore
 
 
 def response(payload: object, status_code: int = 200) -> httpx.Response:
     return httpx.Response(status_code, json=payload)
 
 
-async def test_eodhd_parses_official_eod_shape_and_sorts_oldest_first() -> None:
+async def test_eodhd_parses_official_eod_shape_and_sorts_oldest_first(
+    tmp_path: Path,
+) -> None:
     rows = [
         {
             "date": "2026-08-20",
@@ -36,7 +40,9 @@ async def test_eodhd_parses_official_eod_shape_and_sorts_oldest_first() -> None:
         },
     ]
     transport = httpx.MockTransport(lambda request: response(rows))
-    provider = EODHDProvider("secret", httpx.AsyncClient(transport=transport))
+    provider = EODHDProvider(
+        "secret", httpx.AsyncClient(transport=transport), ArtifactStore(tmp_path)
+    )
 
     result = await provider.get_daily_bars("BHP", date(2026, 8, 20))
 
@@ -46,7 +52,7 @@ async def test_eodhd_parses_official_eod_shape_and_sorts_oldest_first() -> None:
     assert result.provenance["symbol"] == "BHP.AU"
 
 
-async def test_marketstack_parses_v2_shape() -> None:
+async def test_marketstack_parses_v2_shape(tmp_path: Path) -> None:
     payload = {
         "pagination": {"count": 1, "total": 1},
         "data": [
@@ -64,7 +70,9 @@ async def test_marketstack_parses_v2_shape() -> None:
         ],
     }
     transport = httpx.MockTransport(lambda request: response(payload))
-    provider = MarketstackProvider("secret", httpx.AsyncClient(transport=transport))
+    provider = MarketstackProvider(
+        "secret", httpx.AsyncClient(transport=transport), ArtifactStore(tmp_path)
+    )
 
     result = await provider.get_daily_bars("BHP", date(2026, 8, 20))
 
@@ -74,10 +82,14 @@ async def test_marketstack_parses_v2_shape() -> None:
     assert result.provenance["exchange"] == "XASX"
 
 
-async def test_http_rate_limit_is_retryable_and_empty_success_is_not_failure() -> None:
+async def test_http_rate_limit_is_retryable_and_empty_success_is_not_failure(
+    tmp_path: Path,
+) -> None:
+    artifacts = ArtifactStore(tmp_path)
     rate_limited = EODHDProvider(
         "secret",
         httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response({}, 429))),
+        artifacts,
     )
     empty = MarketstackProvider(
         "secret",
@@ -86,6 +98,7 @@ async def test_http_rate_limit_is_retryable_and_empty_success_is_not_failure() -
                 lambda request: response({"pagination": {"count": 0}, "data": []})
             )
         ),
+        artifacts,
     )
 
     failed = await rate_limited.get_daily_bars("BHP", date(2026, 8, 20))
@@ -97,7 +110,9 @@ async def test_http_rate_limit_is_retryable_and_empty_success_is_not_failure() -
     assert no_rows.data == []
 
 
-async def test_asx_corporate_actions_use_point_in_time_official_feed_shape() -> None:
+async def test_asx_corporate_actions_use_point_in_time_official_feed_shape(
+    tmp_path: Path,
+) -> None:
     payload = {
         "data": [
             {
@@ -118,6 +133,7 @@ async def test_asx_corporate_actions_use_point_in_time_official_feed_shape() -> 
         httpx.AsyncClient(
             transport=httpx.MockTransport(lambda request: response(payload))
         ),
+        ArtifactStore(tmp_path),
     )
 
     result = await provider.get_corporate_actions("BHP", date(2026, 8, 20))

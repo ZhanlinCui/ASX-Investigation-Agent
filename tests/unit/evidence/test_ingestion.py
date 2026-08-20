@@ -12,6 +12,19 @@ from asx_investigator.evidence.ingestion import (
 from asx_investigator.storage.artifacts import ArtifactStore
 
 
+class _MockConnector:
+    """Deterministic test transport; production peer checks are covered separately."""
+
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self.client = client
+
+    async def get(
+        self, url: httpx.URL, allowed_addresses: set[str]
+    ) -> httpx.Response:
+        request = self.client.build_request("GET", url)
+        return await self.client.send(request, stream=True, follow_redirects=False)
+
+
 def test_url_policy_rejects_private_and_non_http_targets() -> None:
     with pytest.raises(SourceRejected):
         validate_public_url("http://127.0.0.1/report", ["127.0.0.1"])
@@ -35,7 +48,9 @@ async def test_fetch_freezes_allowed_public_content(tmp_path: Path) -> None:
     async def public_resolver(host: str) -> list[str]:
         return ["93.184.216.34"]
 
-    ingestor = SourceIngestor(ArtifactStore(tmp_path), client, resolver=public_resolver)
+    ingestor = SourceIngestor(
+        ArtifactStore(tmp_path), _MockConnector(client), resolver=public_resolver
+    )
     source = await ingestor.fetch("https://issuer.example/report")
 
     assert source.size_bytes == len(b"issuer guidance")
@@ -60,7 +75,9 @@ async def test_fetch_rejects_oversized_content_length(tmp_path: Path) -> None:
     async def public_resolver(host: str) -> list[str]:
         return ["93.184.216.34"]
 
-    ingestor = SourceIngestor(ArtifactStore(tmp_path), client, resolver=public_resolver)
+    ingestor = SourceIngestor(
+        ArtifactStore(tmp_path), _MockConnector(client), resolver=public_resolver
+    )
 
     with pytest.raises(SourceRejected, match="20 MB"):
         await ingestor.fetch("https://issuer.example/report.pdf")
@@ -79,7 +96,7 @@ async def test_fetch_rejects_unsupported_mime_and_redirect_to_private_host(
 
     ingestor = SourceIngestor(
         ArtifactStore(tmp_path),
-        httpx.AsyncClient(transport=httpx.MockTransport(responder)),
+        _MockConnector(httpx.AsyncClient(transport=httpx.MockTransport(responder))),
         resolver=resolver,
     )
 

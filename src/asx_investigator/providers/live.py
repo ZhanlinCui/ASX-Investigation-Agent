@@ -20,9 +20,11 @@ from asx_investigator.providers.market_adapters import (
     EODHDCorporateActionsProvider,
     EODHDProvider,
     MarketstackProvider,
+    request_captured_json,
 )
 from asx_investigator.providers.outcomes import ProviderOutcome
 from asx_investigator.settings import Settings
+from asx_investigator.storage.artifacts import ArtifactStore
 
 SYDNEY = ZoneInfo("Australia/Sydney")
 
@@ -30,8 +32,15 @@ SYDNEY = ZoneInfo("Australia/Sydney")
 class LiveToolGateway:
     """Live tool adapter with explicit source roles and no silent synthetic fallback."""
 
-    def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        client: httpx.AsyncClient | None = None,
+        *,
+        artifacts: ArtifactStore,
+    ) -> None:
         self.settings = settings
+        self.artifacts = artifacts
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(timeout=20, trust_env=False)
 
@@ -48,12 +57,20 @@ class LiveToolGateway:
         # EODHD recognises ASX symbols with the .AU suffix. The issuer name is
         # reconciled against the price source rather than guessed by the model.
         token = self._require_eodhd()
-        response = await self.client.get(
+        response = await request_captured_json(
+            self.client,
+            self.artifacts,
+            "GET",
             f"https://eodhd.com/api/search/{ticker}",
             params={"api_token": token, "fmt": "json", "limit": 20},
         )
-        response.raise_for_status()
-        matches = response.json()
+        if response.status_code >= 400:
+            raise DataProviderUnavailable(
+                f"Instrument provider unavailable: HTTP_{response.status_code}"
+            )
+        matches = response.payload
+        if not isinstance(matches, list):
+            raise DataProviderUnavailable("Instrument provider returned an invalid schema")
         match = next(
             (
                 item
@@ -79,9 +96,13 @@ class LiveToolGateway:
             raise DataProviderUnavailable(
                 "The requested date is outside the trailing 12-month live window"
             )
-        primary = EODHDProvider(self._require_eodhd(), self.client)
+        primary = EODHDProvider(self._require_eodhd(), self.client, self.artifacts)
         fallback = (
-            MarketstackProvider(self.settings.marketstack_api_key, self.client)
+            MarketstackProvider(
+                self.settings.marketstack_api_key,
+                self.client,
+                self.artifacts,
+            )
             if self.settings.marketstack_api_key
             else None
         )
@@ -100,7 +121,7 @@ class LiveToolGateway:
         self, ticker: str, trade_date: date
     ) -> ProviderOutcome[list[CorporateAction]]:
         return await EODHDCorporateActionsProvider(
-            self._require_eodhd(), self.client
+            self._require_eodhd(), self.client, self.artifacts
         ).get_corporate_actions(ticker, trade_date)
 
     async def get_evidence(self, ticker: str, trade_date: date) -> list[EvidenceItem]:
@@ -132,7 +153,10 @@ class LiveToolGateway:
     ) -> list[EvidenceItem]:
         if not self.settings.tavily_api_key:
             return []
-        response = await self.client.post(
+        response = await request_captured_json(
+            self.client,
+            self.artifacts,
+            "POST",
             "https://api.tavily.com/search",
             json={
                 "api_key": self.settings.tavily_api_key,
@@ -143,9 +167,15 @@ class LiveToolGateway:
                 "include_raw_content": "markdown",
             },
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise DataProviderUnavailable(
+                f"Discovery provider unavailable: HTTP_{response.status_code}"
+            )
+        payload = response.payload
+        if not isinstance(payload, dict):
+            raise DataProviderUnavailable("Discovery provider returned an invalid schema")
         items: list[EvidenceItem] = []
-        for index, row in enumerate(response.json().get("results", []), start=1):
+        for index, row in enumerate(payload.get("results", []), start=1):
             url = row.get("url", "")
             host = (httpx.URL(url).host or "").lower()
             if host == "asx.com.au" or host.endswith(".asx.com.au"):

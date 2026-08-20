@@ -26,6 +26,7 @@ from asx_investigator.domain.models import (
 )
 from asx_investigator.evidence.ingestion import (
     MAX_SOURCE_BYTES,
+    HttpxPublicAddressConnector,
     SourceIngestor,
     SourceRejected,
 )
@@ -358,12 +359,8 @@ def create_app(
 ) -> FastAPI:
     settings = Settings()
     injected_service = service is not None
+    injected_repository = repository is not None
     recorded_service = service
-    if service is None:
-        service = InvestigationService(
-            LiveToolGateway(settings), reasoner=GeminiInvestigationReasoner(settings)
-        )
-        recorded_service = InvestigationService(RecordedToolGateway.default())
     if repository is None:
         path = (
             Path(tempfile.mkdtemp(prefix="asx-investigator-test-")) / "cases.db"
@@ -374,11 +371,18 @@ def create_app(
     evidence_registry = SQLiteEvidenceRegistry(repository.database_path)
     artifact_root = (
         repository.database_path.parent / "artifacts"
-        if injected_service
+        if injected_service or injected_repository
         else settings.artifact_dir
     )
-    source_client = httpx.AsyncClient(timeout=20, trust_env=False)
-    source_ingestor = SourceIngestor(ArtifactStore(artifact_root), source_client)
+    artifact_store = ArtifactStore(artifact_root)
+    if service is None:
+        service = InvestigationService(
+            LiveToolGateway(settings, artifacts=artifact_store),
+            reasoner=GeminiInvestigationReasoner(settings),
+        )
+        recorded_service = InvestigationService(RecordedToolGateway.default())
+    source_connector = HttpxPublicAddressConnector(timeout=20)
+    source_ingestor = SourceIngestor(artifact_store, source_connector)
     manager = CaseManager(
         service,
         repository,
@@ -393,7 +397,7 @@ def create_app(
         await manager.start()
         yield
         await manager.stop()
-        await source_client.aclose()
+        await source_connector.aclose()
         close_tools = getattr(service.tools, "close", None)
         if close_tools is not None:
             await close_tools()
@@ -406,6 +410,8 @@ def create_app(
         allow_headers=["Content-Type", "Last-Event-ID"],
     )
     app.state.case_manager = manager
+    app.state.artifact_store = artifact_store
+    app.state.source_ingestor = source_ingestor
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:

@@ -1,12 +1,132 @@
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
 from asx_investigator.market.forensics import DailyBar
+from asx_investigator.providers.capture import capture_provider_payload
 from asx_investigator.providers.market import CorporateAction
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
+from asx_investigator.storage.artifacts import ArtifactReference, ArtifactStore
+
+MAX_PROVIDER_RESPONSE_BYTES = 20 * 1024 * 1024
+
+
+class ProviderResponseTooLarge(httpx.RequestError):
+    """Raised before an unbounded provider response can enter the application."""
+
+    def __init__(
+        self,
+        artifact: ArtifactReference,
+        *,
+        request: httpx.Request,
+    ) -> None:
+        super().__init__("Provider response exceeded 20 MB", request=request)
+        self.artifact = artifact
+
+
+class ProviderResponseReadError(httpx.RequestError):
+    """Carries a frozen partial response when the provider stream fails."""
+
+    def __init__(
+        self,
+        artifact: ArtifactReference,
+        *,
+        request: httpx.Request,
+    ) -> None:
+        super().__init__("Provider response stream failed", request=request)
+        self.artifact = artifact
+
+
+@dataclass(frozen=True)
+class CapturedJsonResponse:
+    status_code: int
+    payload: object | None
+    artifact: ArtifactReference | None
+
+
+async def request_captured_json(
+    client: httpx.AsyncClient,
+    artifacts: ArtifactStore,
+    method: str,
+    url: str,
+    **request_kwargs: object,
+) -> CapturedJsonResponse:
+    """Freeze bounded JSON response content before any provider-specific parsing."""
+
+    async with client.stream(
+        method, url, follow_redirects=False, **request_kwargs
+    ) as response:
+        content = bytearray()
+        try:
+            async for chunk in response.aiter_bytes():
+                if len(content) + len(chunk) > MAX_PROVIDER_RESPONSE_BYTES:
+                    artifact = capture_provider_payload(
+                        artifacts,
+                        {
+                            "error_code": "RESPONSE_TOO_LARGE",
+                            "status_code": response.status_code,
+                        },
+                        "application/json",
+                    )
+                    raise ProviderResponseTooLarge(artifact, request=response.request)
+                content.extend(chunk)
+        except ProviderResponseTooLarge:
+            raise
+        except httpx.HTTPError as error:
+            if not content:
+                raise
+            artifact = capture_provider_payload(
+                artifacts,
+                {
+                    "body": bytes(content).decode("utf-8", errors="replace"),
+                    "error_code": "NETWORK_ERROR",
+                    "status_code": response.status_code,
+                },
+                "application/json",
+            )
+            raise ProviderResponseReadError(
+                artifact, request=response.request
+            ) from error
+        status_code = response.status_code
+
+    if not content:
+        return CapturedJsonResponse(
+            status_code=status_code,
+            payload=None,
+            artifact=None,
+        )
+
+    try:
+        decoded: object = json.loads(bytes(content))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        frozen_payload: object = {
+            "body": bytes(content).decode("utf-8", errors="replace"),
+            "status_code": status_code,
+        }
+        parsed_payload = None
+    else:
+        frozen_payload = (
+            {"payload": decoded, "status_code": status_code}
+            if status_code >= 400
+            else decoded
+        )
+        parsed_payload = decoded
+
+    artifact = capture_provider_payload(artifacts, frozen_payload, "application/json")
+    captured = json.loads(artifacts.get(artifact.artifact_id))
+    if status_code < 400 and parsed_payload is not None:
+        parsed_payload = captured
+    elif status_code >= 400 and parsed_payload is not None:
+        parsed_payload = captured["payload"]
+    return CapturedJsonResponse(
+        status_code=status_code,
+        payload=parsed_payload,
+        artifact=artifact,
+    )
 
 
 def _failure_status(status_code: int) -> ProviderStatus:
@@ -29,9 +149,15 @@ def _coverage_status(bars: list[DailyBar], trade_date: date) -> tuple[ProviderSt
 class EODHDProvider:
     name = "EODHD"
 
-    def __init__(self, api_key: str, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        client: httpx.AsyncClient,
+        artifacts: ArtifactStore,
+    ) -> None:
         self.api_key = api_key
         self.client = client
+        self.artifacts = artifacts
 
     async def get_daily_bars(
         self, ticker: str, trade_date: date
@@ -39,7 +165,10 @@ class EODHDProvider:
         retrieved_at = datetime.now(UTC)
         symbol = f"{ticker.upper()}.AU"
         try:
-            result = await self.client.get(
+            result = await request_captured_json(
+                self.client,
+                self.artifacts,
+                "GET",
                 f"https://eodhd.com/api/eod/{symbol}",
                 params={
                     "api_token": self.api_key,
@@ -50,6 +179,19 @@ class EODHDProvider:
                     "to": trade_date.isoformat(),
                 },
             )
+        except ProviderResponseTooLarge as error:
+            return self._failure(
+                retrieved_at,
+                "RESPONSE_TOO_LARGE",
+                ProviderStatus.PERMANENT_FAILURE,
+                artifact=error.artifact,
+            )
+        except ProviderResponseReadError as error:
+            return self._failure(
+                retrieved_at,
+                "NETWORK_ERROR",
+                artifact=error.artifact,
+            )
         except httpx.HTTPError:
             return self._failure(retrieved_at, "NETWORK_ERROR")
         if result.status_code >= 400:
@@ -57,9 +199,10 @@ class EODHDProvider:
                 retrieved_at,
                 f"HTTP_{result.status_code}",
                 _failure_status(result.status_code),
+                artifact=result.artifact,
             )
         try:
-            rows = result.json()
+            rows = result.payload
             bars = sorted(
                 [
                     DailyBar(
@@ -77,7 +220,10 @@ class EODHDProvider:
             )
         except (KeyError, TypeError, ValueError):
             return self._failure(
-                retrieved_at, "SCHEMA_INVALID", ProviderStatus.PERMANENT_FAILURE
+                retrieved_at,
+                "SCHEMA_INVALID",
+                ProviderStatus.PERMANENT_FAILURE,
+                artifact=result.artifact,
             )
         if not bars:
             return ProviderOutcome[list[DailyBar]](
@@ -88,6 +234,7 @@ class EODHDProvider:
                 data=[],
                 provenance={"symbol": symbol, "endpoint": "eod"},
                 source_version="eod-v1",
+                artifact=result.artifact,
             )
         status, coverage = _coverage_status(bars, trade_date)
         return ProviderOutcome[list[DailyBar]](
@@ -98,6 +245,7 @@ class EODHDProvider:
             data=bars,
             provenance={"symbol": symbol, "endpoint": "eod"},
             source_version="eod-v1",
+            artifact=result.artifact,
         )
 
     def _failure(
@@ -105,6 +253,8 @@ class EODHDProvider:
         retrieved_at: datetime,
         error_code: str,
         status: ProviderStatus = ProviderStatus.RETRYABLE_FAILURE,
+        *,
+        artifact: ArtifactReference | None = None,
     ) -> ProviderOutcome[list[DailyBar]]:
         return ProviderOutcome[list[DailyBar]](
             status=status,
@@ -113,22 +263,32 @@ class EODHDProvider:
             coverage="NONE",
             error_code=error_code,
             source_version="eod-v1",
+            artifact=artifact,
         )
 
 
 class MarketstackProvider:
     name = "Marketstack"
 
-    def __init__(self, api_key: str, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        client: httpx.AsyncClient,
+        artifacts: ArtifactStore,
+    ) -> None:
         self.api_key = api_key
         self.client = client
+        self.artifacts = artifacts
 
     async def get_daily_bars(
         self, ticker: str, trade_date: date
     ) -> ProviderOutcome[list[DailyBar]]:
         retrieved_at = datetime.now(UTC)
         try:
-            result = await self.client.get(
+            result = await request_captured_json(
+                self.client,
+                self.artifacts,
+                "GET",
                 "https://api.marketstack.com/v2/eod",
                 params={
                     "access_key": self.api_key,
@@ -138,6 +298,19 @@ class MarketstackProvider:
                     "limit": 100,
                 },
             )
+        except ProviderResponseTooLarge as error:
+            return self._failure(
+                retrieved_at,
+                "RESPONSE_TOO_LARGE",
+                ProviderStatus.PERMANENT_FAILURE,
+                artifact=error.artifact,
+            )
+        except ProviderResponseReadError as error:
+            return self._failure(
+                retrieved_at,
+                "NETWORK_ERROR",
+                artifact=error.artifact,
+            )
         except httpx.HTTPError:
             return self._failure(retrieved_at, "NETWORK_ERROR")
         if result.status_code >= 400:
@@ -145,9 +318,12 @@ class MarketstackProvider:
                 retrieved_at,
                 f"HTTP_{result.status_code}",
                 _failure_status(result.status_code),
+                artifact=result.artifact,
             )
         try:
-            rows = result.json()["data"]
+            if not isinstance(result.payload, dict):
+                raise TypeError("Marketstack payload must be an object")
+            rows = result.payload["data"]
             bars = sorted(
                 [
                     DailyBar(
@@ -165,7 +341,10 @@ class MarketstackProvider:
             )
         except (KeyError, TypeError, ValueError):
             return self._failure(
-                retrieved_at, "SCHEMA_INVALID", ProviderStatus.PERMANENT_FAILURE
+                retrieved_at,
+                "SCHEMA_INVALID",
+                ProviderStatus.PERMANENT_FAILURE,
+                artifact=result.artifact,
             )
         provenance = {"exchange": "XASX", "endpoint": "v2/eod"}
         if not bars:
@@ -177,6 +356,7 @@ class MarketstackProvider:
                 data=[],
                 provenance=provenance,
                 source_version="marketstack-v2",
+                artifact=result.artifact,
             )
         status, coverage = _coverage_status(bars, trade_date)
         return ProviderOutcome[list[DailyBar]](
@@ -187,6 +367,7 @@ class MarketstackProvider:
             data=bars,
             provenance=provenance,
             source_version="marketstack-v2",
+            artifact=result.artifact,
         )
 
     def _failure(
@@ -194,6 +375,8 @@ class MarketstackProvider:
         retrieved_at: datetime,
         error_code: str,
         status: ProviderStatus = ProviderStatus.RETRYABLE_FAILURE,
+        *,
+        artifact: ArtifactReference | None = None,
     ) -> ProviderOutcome[list[DailyBar]]:
         return ProviderOutcome[list[DailyBar]](
             status=status,
@@ -202,22 +385,32 @@ class MarketstackProvider:
             coverage="NONE",
             error_code=error_code,
             source_version="marketstack-v2",
+            artifact=artifact,
         )
 
 
 class EODHDCorporateActionsProvider:
     name = "EODHD_ASX_CORPORATE_ACTIONS"
 
-    def __init__(self, api_key: str, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        client: httpx.AsyncClient,
+        artifacts: ArtifactStore,
+    ) -> None:
         self.api_key = api_key
         self.client = client
+        self.artifacts = artifacts
 
     async def get_corporate_actions(
         self, ticker: str, trade_date: date
     ) -> ProviderOutcome[list[CorporateAction]]:
         retrieved_at = datetime.now(UTC)
         try:
-            response = await self.client.get(
+            response = await request_captured_json(
+                self.client,
+                self.artifacts,
+                "GET",
                 "https://eodhd.com/api/asx-corporate-actions",
                 params={
                     "api_token": self.api_key,
@@ -228,6 +421,19 @@ class EODHDCorporateActionsProvider:
                     "fmt": "json",
                 },
             )
+        except ProviderResponseTooLarge as error:
+            return self._failure(
+                retrieved_at,
+                "RESPONSE_TOO_LARGE",
+                ProviderStatus.PERMANENT_FAILURE,
+                artifact=error.artifact,
+            )
+        except ProviderResponseReadError as error:
+            return self._failure(
+                retrieved_at,
+                "NETWORK_ERROR",
+                artifact=error.artifact,
+            )
         except httpx.HTTPError:
             return self._failure(retrieved_at, "NETWORK_ERROR")
         if response.status_code >= 400:
@@ -235,13 +441,19 @@ class EODHDCorporateActionsProvider:
                 retrieved_at,
                 f"HTTP_{response.status_code}",
                 _failure_status(response.status_code),
+                artifact=response.artifact,
             )
         try:
-            rows = response.json()["data"]
+            if not isinstance(response.payload, dict):
+                raise TypeError("Corporate action payload must be an object")
+            rows = response.payload["data"]
             actions = [self._parse_action(row) for row in rows]
         except (KeyError, TypeError, ValueError, ZeroDivisionError):
             return self._failure(
-                retrieved_at, "SCHEMA_INVALID", ProviderStatus.PERMANENT_FAILURE
+                retrieved_at,
+                "SCHEMA_INVALID",
+                ProviderStatus.PERMANENT_FAILURE,
+                artifact=response.artifact,
             )
         provenance = {
             "symbol": f"{ticker.upper()}.AU",
@@ -256,6 +468,7 @@ class EODHDCorporateActionsProvider:
             data=actions,
             provenance=provenance,
             source_version="asx-corporate-actions-beta-v1",
+            artifact=response.artifact,
         )
 
     @staticmethod
@@ -286,6 +499,8 @@ class EODHDCorporateActionsProvider:
         retrieved_at: datetime,
         error_code: str,
         status: ProviderStatus = ProviderStatus.RETRYABLE_FAILURE,
+        *,
+        artifact: ArtifactReference | None = None,
     ) -> ProviderOutcome[list[CorporateAction]]:
         return ProviderOutcome[list[CorporateAction]](
             status=status,
@@ -294,4 +509,5 @@ class EODHDCorporateActionsProvider:
             coverage="NONE",
             error_code=error_code,
             source_version="asx-corporate-actions-beta-v1",
+            artifact=artifact,
         )

@@ -390,6 +390,9 @@ class InvestigationService:
                 provenance=item.provenance,
                 error_code=item.error_code,
                 source_version=item.source_version,
+                artifact_id=(
+                    item.artifact.artifact_id if item.artifact is not None else None
+                ),
             )
             for item in market_data.outcomes
         ]
@@ -403,6 +406,11 @@ class InvestigationService:
                 provenance=corporate_actions.provenance,
                 error_code=corporate_actions.error_code,
                 source_version=corporate_actions.source_version,
+                artifact_id=(
+                    corporate_actions.artifact.artifact_id
+                    if corporate_actions.artifact is not None
+                    else None
+                ),
             )
         )
         return InvestigationReport(
