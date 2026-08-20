@@ -1,0 +1,475 @@
+\documentclass[10pt]{article}
+
+\usepackage[a4paper,landscape,margin=0mm]{geometry}
+\usepackage{fontspec}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{ragged2e}
+\usepackage{microtype}
+
+\usetikzlibrary{arrows.meta,backgrounds,calc,fit,matrix,positioning,shapes.geometric}
+
+\setsansfont{Arial}
+\renewcommand{\familydefault}{\sfdefault}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+
+\definecolor{Canvas}{HTML}{FAF8F5}
+\definecolor{Surface}{HTML}{FDFBFA}
+\definecolor{Border}{HTML}{D1D1CD}
+\definecolor{Ink}{HTML}{27251E}
+\definecolor{Graphite}{HTML}{72706B}
+\definecolor{Teal}{HTML}{016A71}
+\definecolor{TealDark}{HTML}{00555B}
+\definecolor{Positive}{HTML}{1F6B4F}
+\definecolor{Negative}{HTML}{9C392A}
+\definecolor{Warning}{HTML}{9B651C}
+\definecolor{Conflict}{HTML}{A34130}
+\definecolor{PaleTeal}{HTML}{E7F2F1}
+\definecolor{PaleGreen}{HTML}{EAF3EE}
+\definecolor{PaleAmber}{HTML}{F8F0DF}
+\definecolor{PaleRed}{HTML}{F7E8E4}
+\definecolor{PaleGraphite}{HTML}{F0EFEC}
+\definecolor{Deep}{HTML}{15383C}
+
+\hypersetup{
+  colorlinks=true,
+  urlcolor=TealDark,
+  linkcolor=TealDark,
+  pdftitle={ASX Unusual Trading Investigation Agent - Product and System Architecture},
+  pdfsubject={Evidence-grounded architecture for investigating unusual trading in ASX-listed equities},
+  pdfauthor={ASX Investigation Agent Project},
+  pdfkeywords={ASX, agent architecture, evidence, memory, evaluation, confidence calibration}
+}
+
+\tikzset{
+  card/.style={draw=Border,fill=Surface,rounded corners=2.4mm,line width=.45pt,inner sep=2.7mm},
+  cardteal/.style={card,draw=Teal!55,fill=PaleTeal},
+  cardgreen/.style={card,draw=Positive!50,fill=PaleGreen},
+  cardamber/.style={card,draw=Warning!50,fill=PaleAmber},
+  cardred/.style={card,draw=Conflict!50,fill=PaleRed},
+  flow/.style={draw=Border,fill=Surface,rounded corners=2mm,line width=.55pt,minimum height=13mm,text width=40mm,align=center,font=\fontsize{7.4}{8.6}\selectfont,text=Ink},
+  flowteal/.style={flow,draw=Teal!65,fill=PaleTeal},
+  flowgreen/.style={flow,draw=Positive!60,fill=PaleGreen},
+  flowamber/.style={flow,draw=Warning!55,fill=PaleAmber},
+  flowred/.style={flow,draw=Conflict!55,fill=PaleRed},
+  mini/.style={draw=Border,fill=Surface,rounded corners=1.5mm,line width=.4pt,minimum height=8mm,text width=27mm,align=center,font=\fontsize{6.3}{7.3}\selectfont,text=Ink},
+  chip/.style={draw=Border,fill=PaleGraphite,rounded corners=2mm,inner xsep=2mm,inner ysep=.9mm,font=\fontsize{6.2}{7}\selectfont,text=Ink},
+  arrow/.style={-{Latex[length=2.2mm,width=1.5mm]},draw=Teal,line width=.75pt},
+  softarrow/.style={-{Latex[length=1.8mm,width=1.2mm]},draw=Graphite!70,line width=.55pt},
+  support/.style={-{Latex[length=2mm,width=1.4mm]},draw=Positive,line width=.8pt},
+  contradict/.style={-{Latex[length=2mm,width=1.4mm]},draw=Conflict,line width=.8pt,dashed},
+  contextedge/.style={-{Latex[length=2mm,width=1.4mm]},draw=Graphite,line width=.65pt,dotted},
+  quantedge/.style={-{Latex[length=2mm,width=1.4mm]},draw=Teal,line width=.8pt},
+  lane/.style={draw=Border,fill=Surface,rounded corners=2.5mm,line width=.5pt},
+  boundary/.style={draw=Conflict!65,dashed,rounded corners=2mm,line width=.65pt},
+  store/.style={draw=Border,fill=Surface,rounded corners=1.8mm,line width=.55pt,minimum height=18mm,text width=52mm,align=left,inner sep=2.6mm,font=\fontsize{6.8}{8.1}\selectfont},
+  state/.style={draw=Border,fill=Surface,rounded corners=4mm,line width=.55pt,minimum height=8mm,text width=27mm,align=center,font=\fontsize{6.4}{7.2}\selectfont},
+  statet/.style={state,draw=Teal!60,fill=PaleTeal},
+  stateg/.style={state,draw=Positive!60,fill=PaleGreen},
+  statea/.style={state,draw=Warning!55,fill=PaleAmber},
+  stater/.style={state,draw=Conflict!55,fill=PaleRed}
+}
+
+\newcommand{\PageFrame}[4]{%
+  \fill[Canvas] (0,0) rectangle (297,-210);
+  \fill[Teal] (12,-12) rectangle (15,-28);
+  \node[anchor=north west,text=Graphite,font=\fontsize{6.2}{7}\selectfont\bfseries] at (19,-12) {#1};
+  \node[anchor=north west,text=Ink,font=\fontsize{18}{20}\selectfont\bfseries,text width=250mm] at (19,-18) {#2};
+  \node[anchor=north west,text=Graphite,font=\fontsize{7.1}{8.5}\selectfont,text width=250mm] at (19,-30) {#3};
+  \draw[Border,line width=.45pt] (12,-199.5) -- (285,-199.5);
+  \node[anchor=west,text=Graphite,font=\fontsize{5.7}{6.5}\selectfont] at (12,-204) {ASX Investigation Agent \textbullet\ Architecture Blueprint \textbullet\ v1.0 \textbullet\ 20 August 2026};
+  \node[anchor=east,text=Graphite,font=\fontsize{5.7}{6.5}\selectfont\bfseries] at (285,-204) {#4 / 9};
+}
+
+\newcommand{\SmallTitle}[1]{\textcolor{Ink}{\fontsize{8}{9.3}\selectfont\bfseries #1}}
+\newcommand{\TinyLabel}[1]{\textcolor{Graphite}{\fontsize{5.8}{6.8}\selectfont\bfseries\MakeUppercase{#1}}}
+\newcommand{\Body}[1]{\textcolor{Ink}{\fontsize{6.8}{8.2}\selectfont #1}}
+\newcommand{\Fine}[1]{\textcolor{Graphite}{\fontsize{5.8}{7.1}\selectfont #1}}
+\newcommand{\SourceLine}[1]{\textcolor{Graphite}{\fontsize{5.1}{6.1}\selectfont #1}}
+
+\newenvironment{dossierpage}{%
+  \thispagestyle{empty}\null
+  \begin{tikzpicture}[remember picture,overlay,x=1mm,y=1mm,shift={(current page.north west)}]
+}{%
+  \end{tikzpicture}\newpage
+}
+
+\begin{document}
+
+% PAGE 1 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{PRODUCT AND SYSTEM ARCHITECTURE}{ASX Unusual Trading Investigation Agent}{A point-in-time, evidence-grounded system for explaining unusual moves in ASX-listed equities.}{1}
+
+\node[anchor=north west,text=Deep,font=\fontsize{12}{14}\selectfont\bfseries,text width=250mm] at (19,-45) {Deterministic market truth constrains model reasoning. Evidence and calibration determine what may be claimed.};
+\node[anchor=north west,text=Graphite,font=\fontsize{7.5}{9}\selectfont,text width=238mm] at (19,-59) {Input: an ASX ticker and an ASX date. Output: a confidence-rated explanation in AUD and AEST/AEDT, with every material claim linked to evidence and every limitation visible.};
+
+\node[flowteal,text width=37mm] (p1a) at (39,-96) {\TinyLabel{Observe}\\[1.2mm]\SmallTitle{Market move}\\[.8mm]\Fine{Session, return, gap, volume, peers}};
+\node[flow,text width=37mm] (p1b) at (94,-96) {\TinyLabel{Retrieve}\\[1.2mm]\SmallTitle{Eligible evidence}\\[.8mm]\Fine{Primary first, frozen, exact passage}};
+\node[flow,text width=37mm] (p1c) at (149,-96) {\TinyLabel{Test}\\[1.2mm]\SmallTitle{Causal hypotheses}\\[.8mm]\Fine{Timing, signature, factors, conflicts}};
+\node[flowamber,text width=37mm] (p1d) at (204,-96) {\TinyLabel{Challenge}\\[1.2mm]\SmallTitle{Independent critic}\\[.8mm]\Fine{Contradictions and stronger alternatives}};
+\node[flowgreen,text width=37mm] (p1e) at (259,-96) {\TinyLabel{Release}\\[1.2mm]\SmallTitle{Cited assessment}\\[.8mm]\Fine{Calibrated confidence or abstention}};
+\draw[arrow] (p1a) -- (p1b);
+\draw[arrow] (p1b) -- (p1c);
+\draw[arrow] (p1c) -- (p1d);
+\draw[arrow] (p1d) -- (p1e);
+
+\node[cardteal,anchor=north west,text width=57mm,minimum height=31mm] at (19,-126) {\TinyLabel{Decision 01}\\[1.2mm]\SmallTitle{Tools}\\[1mm]\Body{Typed providers, immutable snapshots, field-aware source policy, fail-loud semantics.}};
+\node[card,anchor=north west,text width=57mm,minimum height=31mm] at (87,-126) {\TinyLabel{Decision 02}\\[1.2mm]\SmallTitle{Context}\\[1mm]\Body{Metadata filter, hybrid passage retrieval, origin deduplication, bounded Evidence Packs.}};
+\node[card,anchor=north west,text width=57mm,minimum height=31mm] at (155,-126) {\TinyLabel{Decision 03}\\[1.2mm]\SmallTitle{Memory}\\[1mm]\Body{Case-local reasoning, safe reference facts, cache separation, sealed evaluation assets.}};
+\node[card,anchor=north west,text width=57mm,minimum height=31mm] at (223,-126) {\TinyLabel{Decision 04}\\[1.2mm]\SmallTitle{Evaluation}\\[1mm]\Body{Retrieval, attribution, grounding, timing, calibration, abstention and operations.}};
+
+\node[cardamber,anchor=north west,text width=261mm,minimum height=17mm] at (19,-169) {\TinyLabel{Status boundary}\hspace{2mm}\Body{This dossier specifies the target architecture. The repository now contains a runnable MVP with API, recorded and live gateways, Gemini synthesis, 12 passing Python tests and one passing recorded regression case. Confidence remains uncalibrated; no blind performance result exists.}};
+\node[anchor=south west,text=Graphite,text width=260mm] at (19,-197) {\SourceLine{Basis: repository design specification, master development plan, frontend design baseline and verified repository inspection [R9-R12].}};
+\end{dossierpage}
+
+% PAGE 2 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{01 / PRODUCT CONTRACT}{What the product must prove}{The answer must be inspectable, reproducible and allowed to end in uncertainty.}{2}
+
+\node[cardteal,anchor=north west,text width=48mm,minimum height=41mm] (input) at (14,-45) {\TinyLabel{Input contract}\\[1.6mm]\SmallTitle{Ticker + ASX date}\\[1.5mm]\Body{Optional: source constraints, peer set, point-in-time cutoff and execution mode.}\\[1.5mm]\Fine{Never silently remap a non-trading date.}};
+\node[card,anchor=north west,text width=146mm,minimum height=41mm] (corecontract) at (72,-45) {\TinyLabel{Required investigation}\\[1.5mm]
+\begin{minipage}{142mm}\fontsize{6.8}{8.2}\selectfont\color{Ink}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries}p{27mm}X>{\bfseries}p{27mm}X@{}}
+Resolve & instrument, calendar, session & Measure & move, anomaly, turnover, controls\\
+Discover & point-in-time events and failures & Test & hypotheses, alternatives, contradictions\\
+Ground & claims to evidence or results & Quantify & confidence, completeness, abstention
+\end{tabularx}
+\end{minipage}};
+\node[cardgreen,anchor=north west,text width=52mm,minimum height=41mm] (output) at (229,-45) {\TinyLabel{Output contract}\\[1.6mm]\SmallTitle{JSON + report + trace}\\[1.5mm]\Body{Claims, evidence IDs, alternatives, conflicts, confidence and coverage.}\\[1.5mm]\Fine{One structured state, many renderers.}};
+\draw[arrow] (input.east) -- (corecontract.west);
+\draw[arrow] (corecontract.east) -- (output.west);
+
+\node[anchor=north west,text=Ink,font=\fontsize{8.2}{9.5}\selectfont\bfseries] at (14,-96) {Non-negotiable constraints};
+\node[mini,anchor=north west,text width=39mm,minimum height=26mm] at (14,-105) {\TinyLabel{Universe}\\[1mm]\Body{ASX-listed ordinary equities at launch. Unsupported instruments fail explicitly.}};
+\node[mini,anchor=north west,text width=39mm,minimum height=26mm] at (58,-105) {\TinyLabel{Time}\\[1mm]\Body{Australia/Sydney internally; historically correct AEST or AEDT in output.}};
+\node[mini,anchor=north west,text width=39mm,minimum height=26mm] at (102,-105) {\TinyLabel{Calendar}\\[1mm]\Body{ASX date-specific session phases, holidays, halts and early closes.}};
+\node[mini,anchor=north west,text width=39mm,minimum height=26mm] at (146,-105) {\TinyLabel{Currency}\\[1mm]\Body{AUD display; original value, currency, rate, time and source retained.}};
+\node[mini,anchor=north west,text width=39mm,minimum height=26mm] at (190,-105) {\TinyLabel{Causality}\\[1mm]\Body{Evidence published after the move is context, never its earlier cause.}};
+\node[mini,anchor=north west,text width=39mm,minimum height=26mm] at (234,-105) {\TinyLabel{Grounding}\\[1mm]\Body{Every material claim links to evidence or a quantitative result.}};
+
+\node[cardred,anchor=north west,text width=81mm,minimum height=31mm] at (14,-143) {\TinyLabel{Do not produce}\\[1.2mm]\Body{Trading advice, price prediction, manipulation allegations without evidence, or LLM-invented market facts and confidence percentages.}};
+\node[card,anchor=north west,text width=81mm,minimum height=31mm] at (108,-143) {\TinyLabel{Claim roles}\\[1.2mm]\Body{CAUSE \textbullet\ CONTRIBUTOR \textbullet\ CONTEXT \textbullet\ MECHANICAL \textbullet\ FACT \textbullet\ UNRESOLVED}};
+\node[cardamber,anchor=north west,text width=81mm,minimum height=31mm] at (202,-143) {\TinyLabel{Valid terminal states}\\[1.2mm]\Body{COMPLETED \textbullet\ NO IDENTIFIABLE CATALYST \textbullet\ INSUFFICIENT EVIDENCE \textbullet\ INCOMPLETE DATA \textbullet\ FAILED}};
+
+\node[anchor=north west,text=Graphite,font=\fontsize{5.6}{6.6}\selectfont] at (14,-184) {RECEIVED};
+\draw[softarrow] (35,-186) -- (75,-186);
+\node[anchor=center,chip] at (94,-186) {RESOLVED};
+\draw[softarrow] (111,-186) -- (144,-186);
+\node[anchor=center,chip] at (164,-186) {INVESTIGATED};
+\draw[softarrow] (185,-186) -- (218,-186);
+\node[anchor=center,chip,draw=Positive!55,fill=PaleGreen] at (246,-186) {VALIDATED OR ABSTAINED};
+\node[anchor=south west,text=Graphite,text width=270mm] at (14,-197) {\SourceLine{ASX session phases use Sydney time; normal continuous trading ends at 16:00 before the closing auction [R1-R2]. Continuous disclosures are primary issuer evidence [R3].}};
+\end{dossierpage}
+
+% PAGE 3 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{02 / SYSTEM ARCHITECTURE}{Small agent surface, strong assurance core}{Two reasoning nodes operate inside deterministic market, evidence and release boundaries.}{3}
+
+\node[anchor=north west,text=Graphite,font=\fontsize{5.8}{6.8}\selectfont\bfseries] at (13,-45) {EXTERNAL SYSTEMS};
+\node[mini,anchor=north west,text width=32mm] (s1) at (13,-53) {ASX disclosures\\\Fine{announcements + PDFs}};
+\node[mini,anchor=north west,text width=32mm] (s2) at (13,-66) {Market data\\\Fine{daily + intraday}};
+\node[mini,anchor=north west,text width=32mm] (s3) at (13,-79) {Corporate actions\\\Fine{dividend, split, issue}};
+\node[mini,anchor=north west,text width=32mm] (s4) at (13,-92) {Market context\\\Fine{peer, sector, index}};
+\node[mini,anchor=north west,text width=32mm] (s5) at (13,-105) {Macro + commodity\\\Fine{rates, FX, inputs}};
+\node[mini,anchor=north west,text width=32mm] (s6) at (13,-118) {News + wires\\\Fine{contemporaneous}};
+
+\node[cardteal,anchor=north west,text width=36mm,minimum height=86mm] (gateway) at (56,-53) {\TinyLabel{Boundary A}\\[1.3mm]\SmallTitle{Typed provider gateway}\\[2mm]\Body{Schema adapters\\timeouts\\bounded retries\\rate limits\\license rules\\failure envelope\\tool audit log}\\[2mm]\Fine{No provider can interpret causality.}};
+
+\node[lane,anchor=north west,minimum width=150mm,minimum height=25mm] at (104,-47) {};
+\node[anchor=north west,text=Graphite,font=\fontsize{5.6}{6.5}\selectfont\bfseries] at (108,-50) {EXPERIENCE AND CONTRACT};
+\node[mini,anchor=north west,text width=35mm,minimum height=11mm] at (108,-57) {Workbench};
+\node[mini,anchor=north west,text width=35mm,minimum height=11mm] at (148,-57) {Versioned API / CLI};
+\node[mini,anchor=north west,text width=35mm,minimum height=11mm] at (188,-57) {JSON + Markdown};
+\node[mini,anchor=north west,text width=20mm,minimum height=11mm] at (228,-57) {Trace};
+
+\node[lane,anchor=north west,minimum width=150mm,minimum height=36mm,draw=Teal!55,fill=PaleTeal] (orch) at (104,-78) {};
+\node[anchor=north west,text=TealDark,font=\fontsize{5.6}{6.5}\selectfont\bfseries] at (108,-81) {ORCHESTRATION / MODEL TRUST BOUNDARY};
+\node[mini,anchor=north west,text width=37mm,minimum height=17mm,draw=Teal!55] at (108,-89) {LangGraph state\\\Fine{typed + checkpointed}};
+\node[mini,anchor=north west,text width=37mm,minimum height=17mm,draw=Teal!55] at (151,-89) {Investigator\\\Fine{hypotheses + claims}};
+\node[mini,anchor=north west,text width=37mm,minimum height=17mm,draw=Warning!55,fill=PaleAmber] at (194,-89) {Independent critic\\\Fine{falsify + find gaps}};
+\node[mini,anchor=north west,text width=14mm,minimum height=17mm,draw=Teal!55] at (237,-89) {Router};
+
+\node[lane,anchor=north west,minimum width=150mm,minimum height=28mm] at (104,-120) {};
+\node[anchor=north west,text=Graphite,font=\fontsize{5.6}{6.5}\selectfont\bfseries] at (108,-123) {DETERMINISTIC ASSURANCE};
+\node[mini,anchor=north west,text width=31mm,minimum height=14mm] at (108,-131) {Temporal gate};
+\node[mini,anchor=north west,text width=31mm,minimum height=14mm] at (144,-131) {Market validators};
+\node[mini,anchor=north west,text width=31mm,minimum height=14mm] at (180,-131) {Conflict policy};
+\node[mini,anchor=north west,text width=31mm,minimum height=14mm] at (216,-131) {Confidence + citations};
+
+\node[lane,anchor=north west,minimum width=150mm,minimum height=28mm] at (104,-154) {};
+\node[anchor=north west,text=Graphite,font=\fontsize{5.6}{6.5}\selectfont\bfseries] at (108,-157) {TRUTH AND EVIDENCE};
+\node[mini,anchor=north west,text width=40mm,minimum height=14mm] at (108,-165) {Session + instrument};
+\node[mini,anchor=north west,text width=40mm,minimum height=14mm] at (153,-165) {Market forensics};
+\node[mini,anchor=north west,text width=50mm,minimum height=14mm] at (198,-165) {Evidence registry + retrieval};
+
+\node[card,anchor=north west,text width=22mm,minimum height=129mm] at (263,-47) {\TinyLabel{Stores}\\[2mm]\Body{Case state\\[2mm]Source snapshots\\[2mm]Reference data\\[2mm]Calibration artifacts\\[2mm]Eval fixtures\\[2mm]Telemetry}\\[3mm]\Fine{Versioned and access-scoped.}};
+
+\foreach \src in {s1,s2,s3,s4,s5,s6}{\draw[softarrow] (\src.east) -- (gateway.west);}
+\draw[arrow] (gateway.east) -- (104,-111);
+\draw[softarrow] (254,-60) -- (263,-60);
+\draw[softarrow] (254,-101) -- (263,-101);
+\draw[softarrow] (254,-136) -- (263,-136);
+\draw[softarrow] (254,-171) -- (263,-171);
+
+\node[cardamber,anchor=north west,text width=77mm,minimum height=15mm] at (13,-171) {\TinyLabel{Rule}\hspace{2mm}\Body{Models propose and synthesize. Code calculates, verifies, caps and releases.}};
+\node[anchor=south west,text=Graphite,text width=270mm] at (13,-197) {\SourceLine{Architecture baseline [R9-R10]. LangGraph checkpoints support versioned graph-state persistence and resumption [R8].}};
+\end{dossierpage}
+
+% PAGE 4 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{03 / AGENT RUNTIME}{Investigation graph and state machine}{A bounded workflow separates discovery, validation, criticism and release.}{4}
+
+\node[anchor=north west,text=Ink,font=\fontsize{8.2}{9.5}\selectfont\bfseries] at (13,-44) {UML activity flow};
+
+\node[cardteal,anchor=north west,text width=48mm,minimum height=75mm] at (13,-53) {\TinyLabel{1 / Resolve}\\[1.5mm]\SmallTitle{Establish the case}\\[2mm]\Body{Resolve instrument\\Resolve ASX session\\Fetch market history\\Compute move profile\\Check corporate actions}\\[2.4mm]\Fine{Exit early on unsupported instrument, invalid date or insufficient history.}};
+\node[card,anchor=north west,text width=48mm,minimum height=75mm] at (68,-53) {\TinyLabel{2 / Acquire}\\[1.5mm]\SmallTitle{Build evidence}\\[2mm]\Body{Primary disclosures\\External context\\Immutable snapshots\\Parse and locate\\Evidence Registry}\\[2.4mm]\Fine{Provider failure remains distinct from genuine absence.}};
+\node[cardteal,anchor=north west,text width=48mm,minimum height=75mm] at (123,-53) {\TinyLabel{3 / Reason}\\[1.5mm]\SmallTitle{Generate and test}\\[2mm]\Body{Investigator hypotheses\\Temporal checks\\Market signature\\Factors and peers\\Mechanical checks}\\[2.4mm]\Fine{Structured outputs only. No prose-driven routing.}};
+\node[cardamber,anchor=north west,text width=48mm,minimum height=75mm] at (178,-53) {\TinyLabel{4 / Challenge}\\[1.5mm]\SmallTitle{Try to disprove}\\[2mm]\Body{Critic review\\Contradiction search\\Alternative strength\\Conflict resolution\\Targeted retrieval}\\[2.4mm]\Fine{At most one evidence loop, with a specific missing-item request.}};
+\node[cardgreen,anchor=north west,text width=48mm,minimum height=75mm] at (233,-53) {\TinyLabel{5 / Release}\\[1.5mm]\SmallTitle{Gate the answer}\\[2mm]\Body{Build typed claims\\Score observable features\\Apply caps + calibrator\\Validate citations\\Render + trace}\\[2.4mm]\Fine{A failed material claim is removed, weakened or abstained.}};
+\draw[arrow] (61,-90) -- (68,-90);
+\draw[arrow] (116,-90) -- (123,-90);
+\draw[arrow] (171,-90) -- (178,-90);
+\draw[arrow] (226,-90) -- (233,-90);
+\draw[arrow,bend left=20] (226,-70) to node[above,font=\fontsize{5.4}{6.2}\selectfont,text=Warning] {one bounded loop} (205,-53);
+
+\node[anchor=north west,text=Ink,font=\fontsize{8.2}{9.5}\selectfont\bfseries] at (13,-139) {Lifecycle states};
+\node[state] (st1) at (29,-158) {RECEIVED};
+\node[statet] (st2) at (68,-158) {RUNNING};
+\node[statet] (st3) at (107,-158) {CRITIC REVIEW};
+\node[stateg] (st4) at (154,-150) {COMPLETED};
+\node[statea] (st5) at (154,-166) {ABSTAINED};
+\node[statea] (st6) at (202,-150) {INCOMPLETE DATA};
+\node[stater] (st7) at (202,-166) {FAILED};
+\draw[arrow] (st1) -- (st2);
+\draw[arrow] (st2) -- (st3);
+\draw[arrow] (st3) -- (st4);
+\draw[softarrow] (st3) -- (st5);
+\draw[softarrow] (st2) to[bend left=20] (st6);
+\draw[softarrow] (st2) to[bend right=20] (st7);
+\draw[arrow] (st3.north) to[bend left=50] node[above,font=\fontsize{5.3}{6}\selectfont,text=Warning] {specific gap} (st2.north);
+
+\node[card,anchor=north west,text width=56mm,minimum height=34mm] at (229,-140) {\TinyLabel{Termination invariants}\\[1.2mm]\Body{Fixed provider retries\\One targeted retrieval loop\\Serializable state at every node\\No future evidence as cause\\Explicit timeout and failure state}};
+\node[anchor=south west,text=Graphite,text width=270mm] at (13,-197) {\SourceLine{Runtime and routing baseline [R9-R10]. Checkpointed state supports inspection and safe resumption [R8].}};
+\end{dossierpage}
+
+% PAGE 5 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{04 / TOOLS AND CONTEXT}{From provider call to bounded Evidence Pack}{Data enters through typed contracts; documents remain untrusted until normalized, filtered and registered.}{5}
+
+\node[lane,anchor=north west,minimum width=84mm,minimum height=131mm] at (12,-45) {};
+\node[anchor=north west,text=TealDark,font=\fontsize{7.6}{8.8}\selectfont\bfseries] at (17,-50) {A. Typed tools};
+\node[mini,anchor=north west,text width=32mm] at (17,-61) {Market data};
+\node[mini,anchor=north west,text width=32mm] at (55,-61) {ASX disclosure};
+\node[mini,anchor=north west,text width=32mm] at (17,-75) {Corporate actions};
+\node[mini,anchor=north west,text width=32mm] at (55,-75) {News + wires};
+\node[mini,anchor=north west,text width=32mm] at (17,-89) {Macro / commodity};
+\node[mini,anchor=north west,text width=32mm] at (55,-89) {FX + documents};
+\node[cardteal,anchor=north west,text width=70mm,minimum height=31mm] at (17,-107) {\TinyLabel{Provider result envelope}\\[1.2mm]\Body{OK \textbullet\ EMPTY \textbullet\ PARTIAL\\RETRYABLE \textbullet\ PERMANENT \textbullet\ DENIED}\\[1.3mm]\Fine{Failure is never rewritten as no evidence.}};
+\node[cardamber,anchor=north west,text width=70mm,minimum height=23mm] at (17,-146) {\TinyLabel{Audit per call}\\[1mm]\Body{Name, typed arguments, provider, times, status, result hash, cache state, latency and cost.}};
+
+\node[lane,anchor=north west,minimum width=84mm,minimum height=131mm] at (106,-45) {};
+\node[anchor=north west,text=TealDark,font=\fontsize{7.6}{8.8}\selectfont\bfseries] at (111,-50) {B. Source and conflict policy};
+\node[mini,anchor=north west,text width=69mm,minimum height=12mm,draw=Teal!55,fill=PaleTeal] at (111,-61) {T0 Primary\\\Fine{ASX, issuer, regulator, official action}};
+\node[mini,anchor=north west,text width=69mm,minimum height=12mm] at (111,-77) {T1 Institutional secondary\\\Fine{wire, licensed vendor, research}};
+\node[mini,anchor=north west,text width=69mm,minimum height=12mm] at (111,-93) {T2 Reputable financial media};
+\node[mini,anchor=north west,text width=69mm,minimum height=12mm,draw=Warning!45,fill=PaleAmber] at (111,-109) {T3-T4 Discovery only\\\Fine{commentary, social, unverified}};
+\node[cardred,anchor=north west,text width=69mm,minimum height=38mm] at (111,-128) {\TinyLabel{Field-aware disagreement}\\[1.1mm]\Body{Keep both values and sources. Prefer by claim type, field, publication time and authority. Resolve with rationale or retain conflict and cap confidence.}\\[1mm]\Fine{Never average disagreement silently.}};
+
+\node[lane,anchor=north west,minimum width=95mm,minimum height=131mm] at (200,-45) {};
+\node[anchor=north west,text=TealDark,font=\fontsize{7.6}{8.8}\selectfont\bfseries] at (205,-50) {C. Context pipeline};
+\node[mini,anchor=north west,text width=35mm] (cx1) at (205,-61) {Immutable snapshot\\\Fine{hash + retrieval metadata}};
+\node[mini,anchor=north west,text width=35mm] (cx2) at (251,-61) {Parse + locate\\\Fine{page, block, bbox, chars}};
+\draw[arrow] (cx1) -- (cx2);
+\node[mini,anchor=north west,text width=35mm] (cx3) at (205,-84) {Metadata filter\\\Fine{ticker, time, type, sensitive}};
+\node[mini,anchor=north west,text width=35mm] (cx4) at (251,-84) {Hybrid retrieval\\\Fine{BM25 + embedding + prior}};
+\draw[arrow] (cx2.south) |- (cx3.north);
+\draw[arrow] (cx3) -- (cx4);
+\node[mini,anchor=north west,text width=35mm] (cx5) at (205,-107) {Origin dedup\\\Fine{hash, syndication, quote}};
+\node[mini,anchor=north west,text width=35mm,draw=Positive!50,fill=PaleGreen] (cx6) at (251,-107) {Evidence Pack\\\Fine{IDs + exact passages only}};
+\draw[arrow] (cx4.south) |- (cx5.north);
+\draw[arrow] (cx5) -- (cx6);
+\node[cardteal,anchor=north west,text width=81mm,minimum height=27mm] at (205,-132) {\TinyLabel{Retrieval score}\\[1mm]\Body{$w_b\,BM25 + w_e\,Embedding + w_m\,Metadata + w_h\,Hypothesis$}\\[1mm]\Fine{Budgets are set per node, not by dumping documents into one prompt.}};
+\node[cardred,anchor=north west,text width=81mm,minimum height=17mm] at (205,-163) {\TinyLabel{Untrusted content}\hspace{1.5mm}\Body{Document instructions never alter tools, policy or routing.}};
+
+\node[anchor=south west,text=Graphite,text width=274mm] at (12,-197) {\SourceLine{ASX disclosures and session sources [R1-R3]. Indirect prompt injection can arrive through retrieved content, tool output and memory [R6]. Architecture baseline [R9-R10].}};
+\end{dossierpage}
+
+% PAGE 6 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{05 / MEMORY}{Persist facts and artifacts, not conclusions}{Memory is split by scope, authority and lifecycle so one case cannot silently bias the next.}{6}
+
+\node[cardteal,anchor=north west,text width=63mm,minimum height=46mm] (mcase) at (18,-50) {\TinyLabel{Case memory / scoped}\\[1.4mm]\SmallTitle{One investigation only}\\[1mm]\Body{Typed state, evidence IDs, hypotheses, conflicts, tests, tool trace, claims and report versions.}\\[1mm]\Fine{Checkpointed by case ID. Closed case conclusions do not become global priors.}};
+\node[card,anchor=north west,text width=63mm,minimum height=46mm] (mref) at (216,-50) {\TinyLabel{Reference memory / durable}\\[1.4mm]\SmallTitle{Stable, versioned facts}\\[1mm]\Body{Ticker aliases, identifiers, sector taxonomy, source schemas, calendar metadata and provider reliability observations.}\\[1mm]\Fine{Every read passes point-in-time and tenant scope.}};
+\node[card,anchor=north west,text width=63mm,minimum height=43mm] (mcache) at (18,-126) {\TinyLabel{Content cache / reusable}\\[1.4mm]\SmallTitle{Bytes are not beliefs}\\[1mm]\Body{URL, ETag, content hash, publication time and frozen response.}\\[1mm]\Fine{Reuse still requires relevance, eligibility, authority and registry admission.}};
+\node[card,anchor=north west,text width=63mm,minimum height=38mm] (mcal) at (117,-128) {\TinyLabel{Calibration artifacts}\\[1.4mm]\SmallTitle{Measured confidence}\\[1mm]\Body{Feature schema, dataset version, fitted calibrator, thresholds, metrics and uncertainty.}\\[1mm]\Fine{Reject incompatible feature versions.}};
+\node[cardamber,anchor=north west,text width=63mm,minimum height=43mm] (meval) at (216,-126) {\TinyLabel{Evaluation vault / sealed}\\[1.4mm]\SmallTitle{No production writes}\\[1mm]\Body{Holdout labels, immutable fixtures, adjudications and baseline outputs.}\\[1mm]\Fine{Separate access, audit trail and release ceremony.}};
+
+\node[draw=Teal!65,fill=Deep,rounded corners=4mm,minimum width=70mm,minimum height=26mm,text=white,align=center,font=\fontsize{8}{9.5}\selectfont\bfseries] (run) at (148.5,-103) {INVESTIGATION RUN\\[-.4mm]\fontsize{5.9}{6.7}\selectfont typed reads + policy-gated writes};
+\draw[arrow] (mcase.east) -- node[above,font=\fontsize{5.2}{6}\selectfont,text=Graphite] {read / write} (run.west);
+\draw[softarrow] (mref.west) -- node[above,font=\fontsize{5.2}{6}\selectfont,text=Graphite] {versioned read} (run.east);
+\draw[softarrow] (mcache.east) -- node[below,font=\fontsize{5.2}{6}\selectfont,text=Graphite] {bytes only} (run.south west);
+\draw[softarrow] (mcal.north) -- node[right,font=\fontsize{5.2}{6}\selectfont,text=Graphite] {score} (run.south);
+\draw[contradict] (meval.north west) -- node[below,sloped,font=\fontsize{5.2}{6}\selectfont,text=Conflict] {production blocked} (run.south east);
+
+\node[cardred,anchor=north west,text width=90mm,minimum height=29mm] at (101,-50) {\TinyLabel{Never persist as silent truth}\\[1.2mm]\Body{Previous narratives \textbullet\ rumours \textbullet\ model conclusions \textbullet\ subjective management beliefs \textbullet\ hidden labels \textbullet\ secrets in prompts}};
+
+\node[card,anchor=north west,text width=90mm,minimum height=18mm] at (101,-174) {\TinyLabel{Lifecycle controls}\\[1mm]\Body{Namespace by tenant and case \textbullet\ encrypt sensitive stores \textbullet\ immutable artifact versions \textbullet\ documented retention \textbullet\ deletion tombstone + audit event}};
+
+\node[anchor=south west,text=Graphite,text width=274mm] at (18,-197) {\SourceLine{Memory boundaries derive from the project baseline [R9-R10]. LangGraph distinguishes checkpointed thread state from durable stores [R8]. NIST calls for lifecycle risk controls [R4-R5].}};
+\end{dossierpage}
+
+% PAGE 7 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{06 / CLAIMS AND CONFIDENCE}{Confidence is earned by observable evidence}{The claim-evidence graph is the source of truth; the report is only its rendering.}{7}
+
+\node[anchor=north west,text=Ink,font=\fontsize{8.2}{9.5}\selectfont\bfseries] at (13,-45) {Typed claim-evidence graph};
+\node[flowgreen,text width=42mm,minimum height=22mm] (c1) at (73,-78) {\TinyLabel{C1 / Cause}\\[1mm]\SmallTitle{Leading explanation}\\[.8mm]\Fine{claim status + calibrated band}};
+\node[flowamber,text width=42mm,minimum height=20mm] (c2) at (73,-122) {\TinyLabel{C2 / Contributor}\\[1mm]\SmallTitle{Sector support}\\[.8mm]\Fine{lower-ranked, still viable}};
+
+\node[mini,anchor=center,text width=28mm,draw=Positive!55,fill=PaleGreen] (e1) at (21,-65) {E1 Primary\\\Fine{pre-open ASX filing}};
+\node[mini,anchor=center,text width=28mm] (e2) at (21,-91) {E2 Wire reaction\\\Fine{independent origin}};
+\node[mini,anchor=center,text width=28mm,draw=Teal!55,fill=PaleTeal] (q1) at (125,-65) {Q1 Market test\\\Fine{residual + volume}};
+\node[mini,anchor=center,text width=28mm,draw=Conflict!50,fill=PaleRed] (e3) at (125,-96) {E3 Contradiction\\\Fine{peer move too strong}};
+\node[mini,anchor=center,text width=28mm,fill=PaleGraphite] (e4) at (21,-128) {E4 Later article\\\Fine{retrospective only}};
+\node[mini,anchor=center,text width=28mm] (q2) at (125,-128) {Q2 Sector basket\\\Fine{point-in-time peers}};
+
+\draw[support] (e1) -- node[above,font=\fontsize{5}{6}\selectfont,text=Positive] {supports} (c1);
+\draw[support] (e2) -- (c1);
+\draw[quantedge] (q1) -- node[above,font=\fontsize{5}{6}\selectfont,text=Teal] {quantifies} (c1);
+\draw[contradict] (e3) -- node[above,font=\fontsize{5}{6}\selectfont,text=Conflict] {contradicts} (c1);
+\draw[contextedge] (e4) -- node[below,font=\fontsize{5}{6}\selectfont,text=Graphite] {context} (c2);
+\draw[quantedge] (q2) -- (c2);
+
+\node[cardred,anchor=north west,text width=126mm,minimum height=23mm] at (13,-151) {\TinyLabel{Release rule}\\[1mm]\Body{A material claim with no registered support cannot ship. Retrospective evidence cannot support an earlier cause. Syndicated copies count as one origin. Conflicts remain visible.}};
+
+\node[anchor=north west,text=Ink,font=\fontsize{8.2}{9.5}\selectfont\bfseries] at (158,-45) {Confidence and abstention pipeline};
+\node[mini,anchor=north west,text width=32mm,minimum height=27mm] (f1) at (158,-57) {\TinyLabel{Features}\\[1mm]\Body{authority\\timing\\signature\\quant fit\\corroboration\\coverage}};
+\node[mini,anchor=north west,text width=24mm,minimum height=27mm] (f2) at (199,-57) {\TinyLabel{Raw}\\[1mm]\SmallTitle{$s(x)$}\\[1mm]\Fine{inspectable}};
+\node[mini,anchor=north west,text width=31mm,minimum height=27mm,draw=Warning!55,fill=PaleAmber] (f3) at (232,-57) {\TinyLabel{Hard caps}\\[1mm]\Body{no primary\\conflict\\weak tier\\missing data}};
+\draw[arrow] (f1) -- (f2);
+\draw[arrow] (f2) -- (f3);
+
+\node[cardteal,anchor=north west,text width=51mm,minimum height=32mm] (cal) at (158,-97) {\TinyLabel{Versioned calibrator}\\[1mm]\Body{Fit on calibration split only. Apply isotonic or logistic mapping when sample support is adequate.}\\[1mm]\Fine{Artifact binds feature, data and code versions.}};
+\node[cardgreen,anchor=north west,text width=51mm,minimum height=32mm] (band) at (224,-97) {\TinyLabel{Decision}\\[1mm]\Body{Confidence band + rationale\\Completeness score\\Alternative strength\\Abstention decision}\\[1mm]\Fine{No precise probability without stable calibration.}};
+\draw[arrow] (f3.south) |- (cal.north);
+\draw[arrow] (cal) -- (band);
+
+\node[card,anchor=north west,text width=117mm,minimum height=31mm] at (158,-141) {\TinyLabel{Keep four quantities separate}\\[1.2mm]
+\begin{minipage}{113mm}\fontsize{6.6}{7.8}\selectfont\color{Ink}
+Anomaly score \textbullet\ claim support\\
+Selected-hypothesis confidence \textbullet\ investigation completeness
+\end{minipage}\\[1.2mm]\Fine{A dramatic move can have weak attribution. Complete retrieval can still yield no catalyst.}};
+
+\node[anchor=north west,text=Graphite,font=\fontsize{6.1}{7.3}\selectfont] at (158,-180) {$\displaystyle BS=\frac{1}{N}\sum_i(p_i-y_i)^2$\hspace{10mm}$\displaystyle ECE=\sum_b\frac{|S_b|}{N}|acc(S_b)-conf(S_b)|$};
+\node[anchor=north west,text=Positive,font=\fontsize{6.2}{7.2}\selectfont\bfseries] at (158,-191) {Calibration test: predictions near 0.80 should be correct about 80\% of the time in comparable cases.};
+\node[anchor=south west,text=Graphite,text width=274mm] at (13,-197) {\SourceLine{Claim, confidence, cap and abstention baseline [R9-R10]. Probability calibration interpretation [R7].}};
+\end{dossierpage}
+
+% PAGE 8 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{07 / EVALUATION}{Measure every failure surface separately}{The harness must show whether a failure came from data, retrieval, reasoning, grounding, time or calibration.}{8}
+
+\node[anchor=north west,text=Ink,font=\fontsize{8.2}{9.5}\selectfont\bfseries] at (13,-45) {Evaluation architecture};
+
+\node[mini,anchor=north west,text width=34mm,minimum height=27mm,draw=Teal!55,fill=PaleTeal] (ds1) at (13,-56) {DEVELOPMENT\\[1mm]\Fine{prompt, retrieval and rule iteration}};
+\node[mini,anchor=north west,text width=34mm,minimum height=27mm,draw=Warning!55,fill=PaleAmber] (ds2) at (13,-89) {CALIBRATION\\[1mm]\Fine{fit mapper and abstention policy}};
+\node[mini,anchor=north west,text width=34mm,minimum height=27mm,draw=Conflict!50,fill=PaleRed] (ds3) at (13,-122) {SEALED HOLDOUT\\[1mm]\Fine{opened once for release claim}};
+\node[anchor=north west,text=Graphite,font=\fontsize{5.5}{6.5}\selectfont,text width=36mm] at (13,-156) {Issuer and time separation where possible. Two labels plus adjudication for causal gold.};
+
+\node[card,anchor=north west,text width=38mm,minimum height=104mm] (runner) at (58,-56) {\TinyLabel{Case runner}\\[1.5mm]\SmallTitle{Two lanes}\\[2mm]\Body{RECORDED\\immutable sources\\stable hashes\\reproducible traces\\[3mm]LIVE\\provider drift\\coverage and freshness\\reported separately}\\[3mm]\Fine{Same request and report schema in both modes.}};
+\draw[arrow] (ds1.east) -- (runner.west);
+\draw[arrow] (ds2.east) -- (runner.west);
+\draw[arrow] (ds3.east) -- (runner.west);
+
+\node[cardteal,anchor=north west,text width=61mm,minimum height=104mm] at (107,-56) {\TinyLabel{Grader stack}\\[1.4mm]
+\begin{minipage}{57mm}\fontsize{6.5}{8}\selectfont\color{Ink}
+\textbf{Deterministic}\\calendar, time, FX, returns, actions\\[1.2mm]
+\textbf{Retrieval}\\gold evidence Recall@K, MRR\\[1.2mm]
+\textbf{Attribution}\\driver accuracy, top-2, cause/context\\[1.2mm]
+\textbf{Grounding}\\citation precision, support, numbers\\[1.2mm]
+\textbf{Temporal}\\lookahead and session errors\\[1.2mm]
+\textbf{Calibration}\\Brier, ECE, reliability, intervals\\[1.2mm]
+\textbf{Selective + Ops}\\coverage, abstention, latency, cost
+\end{minipage}};
+
+\node[card,anchor=north west,text width=93mm,minimum height=104mm] at (179,-56) {\TinyLabel{Initial release gates / targets, not current results}\\[1.1mm]
+\begin{minipage}{89mm}\fontsize{6.2}{7.35}\selectfont\color{Ink}
+\begin{tabularx}{\linewidth}{@{}X>{\raggedleft\arraybackslash\bfseries}p{24mm}@{}}
+\toprule
+Lookahead violation rate & 0.00\\
+Incorrect session attribution & 0.00\\
+Citation precision & $\geq 0.98$\\
+Material unsupported claims & $\leq 0.01$\\
+Primary-source Recall@10 & $\geq 0.95$\\
+Primary-driver accuracy & $\geq 0.80$\\
+Top-2 driver recall & $\geq 0.90$\\
+Abstention precision & $\geq 0.85$\\
+Calibrated Brier score & beats frozen raw baseline\\
+ECE & $\leq 0.08$ + counts + interval\\
+\bottomrule
+\end{tabularx}
+\end{minipage}\\[1.2mm]\Fine{If the sample is too small, report uncertainty and avoid false precision.}};
+
+\node[cardred,anchor=north west,text width=259mm,minimum height=20mm] at (13,-170) {\TinyLabel{Failure taxonomy}\\[1mm]\Body{DATA \textbullet\ RETRIEVAL \textbullet\ TEMPORAL \textbullet\ QUANTITATIVE \textbullet\ REASONING \textbullet\ GROUNDING \textbullet\ CALIBRATION \textbullet\ INFRASTRUCTURE}\hspace{5mm}\Fine{Every failed case links to its trace and the first failing stage.}};
+\node[anchor=north west,text=Warning,font=\fontsize{5.6}{6.5}\selectfont\bfseries] at (179,-185) {Current repository: recorded regression 1/1; no blind corpus or calibrated performance claim.};
+\node[anchor=south west,text=Graphite,text width=274mm] at (13,-197) {\SourceLine{Dataset policy, metrics and gates [R9-R10]. Calibration semantics [R7]. AI test and evaluation governance [R4-R5].}};
+\end{dossierpage}
+
+% PAGE 9 --------------------------------------------------------------------
+\begin{dossierpage}
+\PageFrame{08 / OPERATING MODEL}{Deployment, controls and delivery path}{The production boundary protects source integrity, model access, case data and the release decision.}{9}
+
+\node[anchor=north west,text=Ink,font=\fontsize{8.2}{9.5}\selectfont\bfseries] at (13,-44) {Deployment and trust boundaries};
+\node[boundary,anchor=north west,minimum width=181mm,minimum height=83mm] at (13,-53) {};
+\node[anchor=north west,text=Conflict,font=\fontsize{5.5}{6.4}\selectfont\bfseries] at (16,-55) {APPLICATION TRUST ZONE};
+\node[mini,anchor=north west,text width=28mm,minimum height=17mm] (d1) at (18,-65) {Analyst\\workbench};
+\node[mini,anchor=north west,text width=29mm,minimum height=17mm,draw=Teal!55,fill=PaleTeal] (d2) at (57,-65) {API gateway\\auth + limits};
+\node[mini,anchor=north west,text width=28mm,minimum height=17mm] (d3) at (97,-65) {Task queue\\leases + cancel};
+\node[mini,anchor=north west,text width=29mm,minimum height=17mm,draw=Teal!55,fill=PaleTeal] (d4) at (136,-65) {Graph workers\\isolated runs};
+\draw[arrow] (d1) -- (d2);
+\draw[arrow] (d2) -- (d3);
+\draw[arrow] (d3) -- (d4);
+
+\node[mini,anchor=north west,text width=29mm,minimum height=17mm] (d5) at (18,-101) {Case DB\\state + claims};
+\node[mini,anchor=north west,text width=29mm,minimum height=17mm] (d6) at (57,-101) {Object store\\source snapshots};
+\node[mini,anchor=north west,text width=28mm,minimum height=17mm] (d7) at (97,-101) {Telemetry\\traces + metrics};
+\node[mini,anchor=north west,text width=29mm,minimum height=17mm,draw=Warning!55,fill=PaleAmber] (d8) at (136,-101) {Secrets + KMS\\no prompt secrets};
+\draw[softarrow] (d4.south) -- (d5.north);
+\draw[softarrow] (d4.south) -- (d6.north);
+\draw[softarrow] (d4.south) -- (d7.north);
+\draw[softarrow] (d8.north) -- (d4.south);
+
+\node[boundary,anchor=north west,minimum width=78mm,minimum height=83mm] at (205,-53) {};
+\node[anchor=north west,text=Conflict,font=\fontsize{5.5}{6.4}\selectfont\bfseries] at (208,-55) {EXTERNAL / UNTRUSTED};
+\node[mini,anchor=north west,text width=28mm,minimum height=17mm] (dg) at (211,-65) {Provider gateway\\allowlist + MIME};
+\node[mini,anchor=north west,text width=28mm,minimum height=17mm,draw=Teal!55,fill=PaleTeal] (dm) at (248,-65) {Model gateway\\schema + budget};
+\node[mini,anchor=north west,text width=28mm,minimum height=17mm] (dx) at (211,-101) {Market + ASX\\licensed sources};
+\node[mini,anchor=north west,text width=28mm,minimum height=17mm,draw=Conflict!45,fill=PaleRed] (du) at (248,-101) {Documents\\untrusted data};
+\draw[arrow] (d4.east) -- (dg.west);
+\draw[arrow] (d4.east) -- (dm.west);
+\draw[softarrow] (dg) -- (dx);
+\draw[softarrow] (dg) -- (du);
+
+\node[card,anchor=north west,text width=85mm,minimum height=30mm] at (13,-145) {\TinyLabel{Operational controls}\\[1mm]\Body{Encryption \textbullet\ tenant/case isolation \textbullet\ idempotency \textbullet\ timeouts \textbullet\ MIME and size limits \textbullet\ URL policy \textbullet\ dependency scans \textbullet\ immutable audit \textbullet\ rollback artifacts}};
+\node[cardred,anchor=north west,text width=85mm,minimum height=30mm] at (107,-145) {\TinyLabel{Critical risks}\\[1mm]\Body{Licensing and historical coverage \textbullet\ uncertain dissemination time \textbullet\ corporate-action false positives \textbullet\ missed disclosure \textbullet\ duplicate news \textbullet\ overconfident calibration}};
+
+\node[cardteal,anchor=north west,text width=80mm,minimum height=48mm] at (203,-137) {\TinyLabel{Four decisions / rationale}\\[1.2mm]\Body{\textbf{Tools}: typed, auditable and field-aware.\\[1mm]\textbf{Context}: exact passages, bounded per task.\\[1mm]\textbf{Memory}: stable facts persist; narratives do not.\\[1mm]\textbf{Evals}: measure evidence, cause, timing and calibration separately.}};
+
+\node[anchor=north west,text=Ink,font=\fontsize{7.8}{9}\selectfont\bfseries] at (13,-179) {Delivery sequence};
+\draw[Border,line width=1.4pt] (15,-187) -- (194,-187);
+\foreach \x/\label in {15/M0,35/M1,55/M2,75/M3,95/M4,115/M5,135/M6,155/M7,175/M8,194/M9}{
+  \fill[Surface] (\x,-187) circle (2mm);
+  \draw[Teal,line width=.7pt] (\x,-187) circle (2mm);
+  \node[anchor=north,text=Ink,font=\fontsize{5.1}{6}\selectfont\bfseries] at (\x,-190) {\label};
+}
+\node[anchor=south west,text=Warning,font=\fontsize{5.6}{6.5}\selectfont\bfseries,text width=178mm] at (13,-197) {CURRENT: runnable MVP; 12 Python tests pass; recorded eval 1/1; confidence is explicitly UNCALIBRATED.};
+\node[anchor=south east,text=Graphite] at (285,-197) {\SourceLine{Sources: governance [R4-R5], security [R6], checkpoints [R8], roadmap [R9-R12].}};
+\end{dossierpage}
+
+\end{document}

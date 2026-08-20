@@ -1,149 +1,199 @@
 # ASX Investigation Workbench
-## Frontend Design Specification
+## Product Design Requirement
 
-**Version:** 2.0  
-**Status:** M8 design baseline  
-**Scope:** Desktop-first evidence workbench for a completed or running ASX investigation.
+**Version:** 2.2
+**Status:** Phase 2.8 product baseline; Phase 3 design proposed
+**Language:** English interface  
+**Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
-## 1. Purpose
+## Product purpose
 
-The workbench helps an analyst answer five questions from one case view:
+The workbench must let a user answer six questions without trusting an unsupported narrative:
 
-1. What moved?
-2. What is the leading explanation?
-3. What evidence supports it?
-4. What alternatives or conflicts remain?
-5. Why is confidence high, low, or capped?
+1. What moved during the selected ASX session?
+2. Which explanation leads, and which alternatives remain?
+3. Which evidence supports or contradicts each claim?
+4. Was each source available before the relevant move?
+5. Which data sources or documents were missing or in conflict?
+6. Why does the result have its confidence band?
 
-The UI is an inspection surface, not a trading dashboard or generic chatbot. It renders API-backed facts, evidence, validation, and uncertainty. It must never create financial facts from chat text or client-side inference.
+The workbench is an investigation product. It is not a trading terminal, a portfolio tool or an open-ended chatbot.
 
-## 2. Release scope
+## Product state
 
-M8 includes:
+### Implemented baseline
 
-- Start a new investigation with a natural-language prompt or ticker and ASX date.
-- Case header, market move summary, price chart, primary assessment, and competing hypotheses.
-- Event timeline with point-in-time eligibility.
-- Evidence list, exact-passage source viewer, quantitative validation, and confidence explanation.
-- Markdown report, basic trace, explicit incomplete-data and conflict states.
-- Typed conversational refinements that create a new case version.
+- Ticker and ASX date case creation.
+- Recorded and basic live modes.
+- Market-move summary in AUD.
+- Leading assessment, confidence label and evidence list.
+- JSON and Markdown results.
+- Durable lifecycle and recoverable-failure states.
 
-Deferred: evidence graph, command palette, advanced counterfactuals, collaboration, mobile authoring, and full evaluation administration.
+### Implemented in Phase 2
 
-## 3. Design direction
+- Persistent case archive and restart-safe running state.
+- Ranked hypotheses and one challenge result.
+- Exact evidence passages with source timing and authority.
+- Coverage gaps and material source conflicts.
+- Confidence drivers, caps and investigation completeness as separate fields.
+- Trace events and provider-stage progress.
+- Child case versions for typed refinements.
+- Safe PDF, text and URL source ingestion.
 
-Use the calm research-desk character of the supplied Perplexity reference: warm paper surfaces, compact controls, restrained elevation, a single brand accent, and a search-led entry point. Adapt it for an analytical workbench with denser data and explicit risk states.
+### Deferred
 
-Avoid gradients, glass effects, decorative imagery, oversized chat bubbles, and dashboard ornament. The evidence should carry the visual weight.
+- Authentication, teams, comments and sharing.
+- Alerts, continuous monitoring and scheduled investigations.
+- Trade ideas, recommendations, forecasts and execution.
+- General plugin marketplace.
+- Automatic cross-case learning.
+- Complex evidence-graph authoring.
+- Mobile authoring.
+
+### Proposed for Phase 3
+
+- Assertion-level evidence references between passages and hypotheses.
+- Visible causal mechanism tests and rejected-hypothesis reasons.
+- An append-only investigation ledger with policy and artifact lineage.
+- Calibration sample status for LOW, MEDIUM and HIGH bands.
+- Blind evaluation export without development or sealed labels.
+
+These items are planned behavior. They are not part of the current recorded release until their milestone gates pass.
+
+## Design direction
+
+Keep the supplied warm research-desk language: parchment canvas, soft-paper cards, hairline borders, graphite metadata, ink text and one deep-teal active colour. Do not add gradients, glass effects, decorative imagery or dashboard ornament.
+
+The interface may become denser as evidence is added, but it should remain calm. Evidence and uncertainty receive more visual weight than model prose.
 
 ### Tokens
 
-| Role | Value | Use |
-|---|---:|---|
-| Canvas | `#FAF8F5` | App background |
-| Surface | `#FDFBFA` | Cards, drawers, source passages |
-| Border | `#D1D1CD` | Hairline separation |
-| Ink | `#27251E` | Primary text and primary action |
-| Graphite | `#72706B` | Metadata and inactive controls |
-| Teal | `#016A71` | Selected navigation, links, focus, active filters |
-| Positive | `#1F6B4F` | Positive movement, paired with label/icon |
-| Negative | `#9C392A` | Negative movement, paired with label/icon |
-| Warning | `#9B651C` | Partial data and preliminary state |
-| Conflict | `#A34130` | Material disagreement or failed validation |
+| Role | Value |
+|---|---:|
+| Canvas | `#FAF8F5` |
+| Surface | `#FDFBFA` |
+| Border | `#D1D1CD` |
+| Ink | `#27251E` |
+| Graphite | `#72706B` |
+| Teal | `#016A71` |
+| Positive | `#1F6B4F` |
+| Negative | `#9C392A` |
+| Warning | `#9B651C` |
+| Conflict | `#A34130` |
 
-Use Inter or a system sans-serif at 400 and 500 weight. Use tabular numerals for all prices, dates, percentages, and statistics. Default UI text is 14px; metadata is 12px; headline metrics are 28px. Cards use a 16px radius, inputs 12px, buttons 6px, and chips a full radius. Use borders to separate surfaces; card shadow is limited to `0 1px 2px rgb(0 0 0 / 8%)`.
+Use Inter or a system sans-serif at 400 and 500 weight. Prices, dates, percentages and statistics use tabular numerals. Use borders before shadows.
 
-## 4. Application structure
+## Information architecture
 
-The desktop shell has a 232px left rail and one fluid workspace. The landing page uses a centered 720px investigation input. A case uses a 12-column grid at 1280px or wider; the content width may expand beyond the landing-page measure because evidence and charts require room.
+The desktop shell retains a quiet left rail and one main case workspace.
 
 ```text
-+----------------------+--------------------------------------------------+
-| ASX Investigator     | BHP Group Limited - 19 Feb 2026 - AEDT          |
-|                      | Completed · High confidence                      |
-| Investigate          +--------------------------------------------------+
-| Cases                | Market move        Primary assessment            |
-|                      | Timeline           Hypotheses                    |
-|                      | Evidence           Quantitative validation        |
-|                      | Report             Trace                          |
-+----------------------+--------------------------------------------------+
+Investigate
+Case archive
+  -> Case overview
+  -> Hypotheses
+  -> Evidence and source passage
+  -> Confidence and coverage
+  -> Report and trace
+Method
 ```
 
-The left rail is quiet: ink brand mark, navigation, and case identity. The active item has a teal fill and white label. The header stays visible within a case and shows instrument, date, timezone, lifecycle state, confidence, and current case version.
+The case header displays instrument, ASX date, AEST/AEDT label, lifecycle, investigation outcome, mode and version. Lifecycle and outcome are never collapsed into one label.
 
-## 5. Key screens and interactions
+## Primary flows
 
-### New investigation
+### Start an investigation
 
-The main element is a large warm-paper input: "Investigate BHP on 19 February 2026". It accepts natural language but shows ticker and date fields as an accessible alternative. Below it, display a small set of recent cases. Submitting creates a new case and moves to its running state.
+The user enters a ticker, ASX date and mode. Optional source IDs can attach uploaded or fetched documents. The client submits typed fields; natural-language parsing is not required for Phase 2.
 
-### Case overview
+The running view lists persisted stages. Completed stages remain visible after refresh. A failed recoverable stage names the safe retry action without exposing provider secrets.
 
-Place the market move and primary assessment first. The move card shows close return, abnormal return when available, volume signal, turnover, market-data coverage, and a compact price chart. The assessment states the leading hypothesis, claim status, and confidence without implying that confidence is causal proof.
+### Review a completed case
 
-Below, show a chronological timeline and a ranked hypothesis list. Each hypothesis is labelled as leading, alternative, mechanical, rejected, or insufficient evidence. A hypothesis opens its supporting evidence, contradicting evidence, and validation results.
+The overview presents observed market facts first, followed by the leading assessment. Ranked hypotheses show leading, alternative, mechanical, rejected or insufficient-evidence status.
 
-### Evidence and source viewer
+Each hypothesis opens its supporting evidence, contradicting evidence and validation results. Residual returns and anomaly scores are labelled as measurements, not causes.
 
-Evidence rows show source, timestamp, authority, eligibility, claim links, and a concise extracted passage. Selecting a row opens a right-side viewer at the exact registered passage. Pre-move and post-move evidence are visibly different; post-move material is context unless the backend marks it causally eligible.
+### Inspect evidence
 
-### Quantitative validation and confidence
+Evidence rows display source, title, publication time, retrieval time, authority, temporal role, claim links and locator. Selecting a row opens the exact frozen passage. Post-move evidence is visibly labelled context.
 
-Quantitative validation lists the method, result, availability, and limits. It labels residual returns as model-unexplained, never as a cause.
+Coverage gaps and source conflicts appear next to the affected claim. They cannot be hidden in trace-only views.
 
-Selecting confidence opens a drawer with supporting factors, deductions, deterministic caps, evidence coverage, unresolved conflicts, calibration version, and alternatives. Confidence, completeness, and claim support are displayed as separate values.
+### Inspect confidence
 
-### Refinements
+Confidence displays a LOW, MEDIUM or HIGH band. The drawer lists positive factors, deductions, deterministic caps, unresolved alternatives and investigation completeness.
 
-The case input supports bounded requests such as restricting sources, changing the time cutoff, adding peers, or excluding evidence. The client sends a typed mutation; it never recalculates the case locally. A successful mutation creates a new case version, preserves the parent version, and shows what changed in the trace.
+The interface does not render the internal feature score as an empirical probability. `UNCALIBRATED` remains visible until a future release has sufficient held-out calibration evidence.
 
-## 6. State and data rules
+### Refine a case
 
-The frontend consumes the canonical investigation response and schema-derived client types. Chat is only a presentation and control surface for the same structured case state.
+A user may change the evidence cutoff, choose primary-only sources, exclude evidence or attach a source. The server creates a child version. The original report remains available and a comparison lists changed evidence, claims, gaps and confidence caps.
 
-| State | Required treatment |
+## Required states
+
+| State | Treatment |
 |---|---|
-| Running | Show completed sections immediately; mark later sections as pending. |
-| Preliminary | Show the result with a clear preliminary label. |
-| Partial | Show missing providers, unavailable controls, and coverage impact. |
-| Conflicted | Keep conflicting values and source authority visible. |
-| Insufficient evidence | State the abstention; do not provide a substitute narrative. |
-| Failed | State the failing stage and a safe retry action. |
+| Queued or running | Show persisted completed stages and the active stage |
+| Explained | Show the leading claim and alternatives with evidence |
+| No identifiable catalyst | State that the search completed without an eligible catalyst |
+| Insufficient evidence | State which evidence or coverage is missing |
+| Incomplete data | State which required provider or historical source is unavailable |
+| Material conflict | Show both source values and the selected field policy |
+| Failed recoverable | Name the failed stage and provide retry |
+| Failed | Preserve the trace and explain why retry is unsafe |
 
-All material visible facts require an API field, evidence ID, or quantitative-result ID. Citations open their registered locator. The UI does not expose chain-of-thought, hidden prompts, or raw secret-bearing provider payloads.
+Provider failure is never rendered as “no news” or “no catalyst.”
 
-## 7. Component set
+## Component responsibilities
 
 | Component | Responsibility |
 |---|---|
-| `CaseHeader` | Case identity, lifecycle, version, confidence entry point |
-| `InvestigationInput` | Natural-language and structured case creation |
-| `MarketMoveCard` | Deterministic movement summary and coverage |
-| `PriceChart` | Price series with accessible text summary and event markers |
-| `AssessmentCard` | Leading claim, support status, and linked evidence |
-| `Timeline` | Event order and temporal eligibility |
-| `HypothesisList` | Ranked explanations, alternatives, and rejection reasons |
-| `EvidenceList` / `SourceViewer` | Evidence rows and exact source passage |
-| `QuantValidation` | Tests, results, data availability, and limits |
-| `ConfidenceDrawer` | Drivers, caps, gaps, conflicts, and calibration metadata |
-| `CaseMutation` | Typed refinement and versioned rerun |
-| `ReportView` / `TraceView` | Markdown report and auditable execution summary |
+| `InvestigationInput` | Typed ticker, date, mode and attached source creation |
+| `CaseArchive` | Persisted cases, versions, status and last update |
+| `CaseHeader` | Identity, date, timezone, lifecycle, outcome and version |
+| `StageTimeline` | Replayable progress and failure stage |
+| `MarketMoveCard` | Deterministic move and data resolution |
+| `HypothesisList` | Ranked explanations, alternatives and rejection reason |
+| `EvidenceList` | Source metadata, role, timing and claim links |
+| `SourceViewer` | Exact frozen passage and locator |
+| `CoveragePanel` | Missing providers, documents and affected claims |
+| `ConflictPanel` | Conflicting values and field-resolution policy |
+| `ConfidencePanel` | Band, caps, factors, alternatives and completeness |
+| `CaseVersionCompare` | Parent-child changes |
+| `ReportView` | Markdown generated from validated state |
+| `TraceView` | Public stage, provider and validation events |
 
-## 8. Accessibility and responsive behaviour
+## Data and safety rules
 
-Meet WCAG 2.1 AA for the supported desktop workflow. Every status has text and an icon in addition to colour. Provide visible focus, keyboard navigation, semantic headings, labelled controls, chart summaries, and source-passages that can be selected and read without a pointer.
+- Every visible material fact maps to an API field, evidence ID or quantitative result ID.
+- Evidence links open frozen content rather than a newly fetched page where possible.
+- The UI does not calculate returns, choose sources or adjust confidence.
+- Documents are untrusted data. Their embedded instructions are never shown as system instructions.
+- Secrets, raw credentials, hidden prompts and chain-of-thought are never displayed.
+- User source fetching rejects private and reserved network targets.
+- All status meanings are expressed with text and icons, not colour alone.
 
-At 1024–1279px, retain the left rail and stack secondary panels below the overview. Below 1024px, provide a simplified read-only or tabbed case view; authoring and dense side-by-side analysis are not part of M8.
+## Accessibility and responsive behaviour
 
-## 9. Acceptance criteria
+Meet WCAG 2.1 AA for the desktop flow. Controls need visible focus, labels and keyboard operation. Evidence passages must be selectable and readable without a pointer. Charts need text summaries.
 
-- A user can start an ASX investigation and understand the market move without reading the chat transcript.
-- Each material claim links to evidence or a quantitative result, and each evidence link opens the exact registered passage.
-- The case makes leading, alternative, mechanical, post-event, conflicted, incomplete, and abstained states unambiguous.
-- A user can inspect why confidence has its value and distinguish it from investigation completeness.
-- A source or time-cutoff refinement creates a visible, versioned rerun rather than silently altering the original case.
-- The frontend only renders facts present in structured backend state.
+At 1024 to 1279 px, secondary panels stack below the overview. Below 1024 px, use a tabbed read-only case view; dense authoring remains desktop-first.
 
-## 10. Design principle
+## Phase 2 acceptance criteria
 
-Make the answer easy to challenge. The interface earns trust through provenance, timing, and visible limits rather than visual certainty.
+- Refreshing a running or completed case preserves its state.
+- A user can distinguish lifecycle, outcome, confidence and completeness.
+- Every material claim opens its registered supporting passage.
+- Post-move evidence cannot appear as causal support.
+- Missing providers and source conflicts are visible beside affected conclusions.
+- Retry resumes only a recoverable case stage.
+- Refinement creates a child version and does not mutate the parent.
+- JSON, Markdown and UI present the same claims, evidence and caps.
+- The UI introduces no market fact absent from backend state.
+- The production build and automated accessibility checks pass.
+
+## Product principle
+
+Make the answer easy to challenge. The product earns trust by preserving provenance, timing, alternatives and limits.
