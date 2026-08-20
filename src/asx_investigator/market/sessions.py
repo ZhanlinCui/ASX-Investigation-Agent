@@ -83,6 +83,26 @@ def resolve_session(trade_date: date) -> TradingSession:
     )
 
 
+def resolve_case_context_as_of(
+    trade_date: date, evidence_cutoff: datetime | None = None
+) -> datetime:
+    """Return the deterministic ASX-local point in time for shared context.
+
+    A supplied evidence cutoff is authoritative. Otherwise context is fixed at the
+    target ASX session close rather than the process clock, so an old case never
+    acquires facts that became available later.
+    """
+
+    if evidence_cutoff is not None:
+        if evidence_cutoff.tzinfo is None:
+            raise ValueError("evidence_cutoff must include a timezone")
+        return evidence_cutoff.astimezone(SYDNEY)
+    session = resolve_session(trade_date)
+    if session.market_close is not None:
+        return session.market_close
+    return datetime.combine(trade_date, time.max, tzinfo=SYDNEY)
+
+
 def classify_event(published_at: datetime, session: TradingSession) -> EventTiming:
     local = published_at.astimezone(SYDNEY)
     if not session.is_trading_day:

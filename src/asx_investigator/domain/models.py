@@ -267,7 +267,7 @@ class SharedMemoryEntry(BaseModel):
     entry_id: str = Field(min_length=1, max_length=80)
     memory_type: str = Field(min_length=1, max_length=80)
     ticker: str | None = Field(default=None, min_length=2, max_length=12)
-    payload: dict[str, object] = Field(default_factory=dict)
+    payload: dict[str, str] = Field(default_factory=dict)
     source_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     source_url: str | None = Field(default=None, min_length=1, max_length=2_000)
     scope: str = Field(min_length=1, max_length=80)
@@ -302,7 +302,7 @@ class IssuerReferenceFact(BaseModel):
     source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_url: str = Field(min_length=1, max_length=2_000)
     scope: Literal["CONTEXT_ONLY"] = "CONTEXT_ONLY"
-    valid_from: datetime | None = None
+    valid_from: datetime
     valid_until: datetime
     policy_version: str = Field(min_length=1, max_length=80)
     created_at: datetime
@@ -317,7 +317,7 @@ class IssuerReferenceFact(BaseModel):
         ):
             if value is not None and value.tzinfo is None:
                 raise ValueError(f"{name} must include a timezone")
-        if self.valid_from and self.valid_from >= self.valid_until:
+        if self.valid_from >= self.valid_until:
             raise ValueError("valid_from must be before valid_until")
         return self
 

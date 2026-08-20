@@ -48,6 +48,7 @@ class InvestigationService:
         input_artifact_hashes: list[str] | None = None,
         resume_checkpoint: CheckpointEnvelope | None = None,
         context_facts: list[IssuerReferenceFact] | None = None,
+        context_as_of: datetime | None = None,
     ) -> InvestigationReport:
         return await self.kernel.run(
             ticker,
@@ -63,4 +64,5 @@ class InvestigationService:
             input_artifact_hashes,
             resume_checkpoint,
             context_facts,
+            context_as_of,
         )

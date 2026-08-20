@@ -58,7 +58,11 @@ from asx_investigator.investigation.claim_compiler import (
 from asx_investigator.investigation.ledger import LEDGER_SCHEMA_VERSION, LedgerBuilder
 from asx_investigator.investigation.mechanisms import run_mechanism_tests
 from asx_investigator.market.forensics import calculate_market_move
-from asx_investigator.market.sessions import classify_event, resolve_session
+from asx_investigator.market.sessions import (
+    classify_event,
+    resolve_case_context_as_of,
+    resolve_session,
+)
 from asx_investigator.providers.errors import DataProviderUnavailable
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.providers.protocols import InvestigationTools
@@ -93,12 +97,18 @@ class InvestigationKernel:
         input_artifact_hashes: list[str] | None = None,
         resume_checkpoint: CheckpointEnvelope | None = None,
         context_facts: list[IssuerReferenceFact] | None = None,
+        context_as_of: datetime | None = None,
     ) -> InvestigationReport:
         normalized_ticker = ticker.upper().strip()
         admitted_context_facts = list(context_facts or [])
         requested_date = (
             date.fromisoformat(trade_date) if isinstance(trade_date, str) else trade_date
         )
+        resolved_context_as_of = context_as_of or resolve_case_context_as_of(
+            requested_date, evidence_cutoff
+        )
+        if resolved_context_as_of.tzinfo is None:
+            raise ValueError("context_as_of must include a timezone")
         if version_id is None and resume_checkpoint is not None:
             raise ValueError("resume_checkpoint requires a durable version_id")
         if version_id is not None and request_artifact_hash is None:
@@ -132,6 +142,11 @@ class InvestigationKernel:
                 fact.ledger_hash for fact in state.packet.context_facts
             ) != sorted(fact.ledger_hash for fact in admitted_context_facts):
                 raise ValueError("checkpoint context facts do not match current inputs")
+            if (
+                state.packet is not None
+                and state.packet.context_as_of != resolved_context_as_of
+            ):
+                raise ValueError("checkpoint context as-of does not match current inputs")
             trace = list(state.trace)
             trace.append({"node": resume_checkpoint.stage, "status": "RESUMED"})
         else:
@@ -427,6 +442,7 @@ class InvestigationKernel:
                 # Reference facts remain typed packet context. They never enter the
                 # evidence list, assertion builder, claim compiler or mechanism tests.
                 context_facts=admitted_context_facts,
+                context_as_of=resolved_context_as_of,
             )
             await completed("assemble_evidence_packet")
         packet = state.packet
@@ -797,6 +813,7 @@ class InvestigationKernel:
                     conflicts,
                     case_version_id=packet.case_version_id,
                     context_facts=packet.context_facts,
+                    context_as_of=packet.context_as_of,
                 )
                 checkpoint_state.evidence = list(evidence)
                 checkpoint_state.packet = packet

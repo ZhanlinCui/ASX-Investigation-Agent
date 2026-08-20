@@ -41,6 +41,7 @@ from asx_investigator.investigation.checkpoints import (
     InvestigationState,
 )
 from asx_investigator.investigation.service import InvestigationService
+from asx_investigator.market.sessions import resolve_case_context_as_of
 from asx_investigator.providers.capture import canonical_json_bytes
 from asx_investigator.providers.live import LiveToolGateway
 from asx_investigator.providers.recorded import RecordedToolGateway
@@ -266,6 +267,19 @@ class CaseManager:
         memory_hashes = [fact.ledger_hash for fact in context_facts or []]
         return sorted(set([request_hash, *source_hashes, *memory_hashes]))
 
+    async def _case_context_facts(
+        self, request: InvestigationRequest
+    ) -> tuple[list[IssuerReferenceFact], datetime]:
+        """Resolve immutable non-causal reference context at the sealed case cutoff."""
+
+        context_as_of = resolve_case_context_as_of(
+            request.trade_date, request.evidence_cutoff
+        )
+        facts = await self.shared_memory.list_context_facts(
+            request.ticker, as_of=context_as_of
+        )
+        return facts, context_as_of
+
     async def _compatible_checkpoint(
         self,
         record: CaseVersionRecord,
@@ -283,7 +297,7 @@ class CaseManager:
             return None, "SCHEMA_MISMATCH"
         try:
             state = InvestigationState.model_validate(candidate.typed_state_json)
-            context_facts = await self.shared_memory.list_context_facts(request.ticker)
+            context_facts, _ = await self._case_context_facts(request)
             expected_initial_inputs = await self._initial_input_hashes(
                 request,
                 context_facts=context_facts,
@@ -395,7 +409,7 @@ class CaseManager:
                     event_payload,
                 )
 
-            context_facts = await self.shared_memory.list_context_facts(request.ticker)
+            context_facts, context_as_of = await self._case_context_facts(request)
             supplied_evidence = await self.repository.get_source_evidence(request.source_ids)
             for item in supplied_evidence:
                 await self.evidence_registry.register(record.version_id, item)
@@ -445,6 +459,7 @@ class CaseManager:
                 ),
                 resume_checkpoint=resume_checkpoint,
                 context_facts=context_facts,
+                context_as_of=context_as_of,
             )
             report.case_id = record.case_id
             report.run_id = record.version_id
