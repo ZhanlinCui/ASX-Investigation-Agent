@@ -10,6 +10,7 @@ import aiosqlite
 from pydantic import BaseModel, Field
 
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole
+from asx_investigator.investigation.checkpoints import CheckpointEnvelope
 
 
 class CaseVersionImmutableError(RuntimeError):
@@ -29,6 +30,8 @@ class CaseVersionRecord(BaseModel):
     active_stage: str | None = None
     request_payload: dict[str, object] = Field(default_factory=dict)
     report_payload: dict[str, object] | None = None
+    request_schema_version: str = "phase2-v1"
+    report_schema_version: str | None = None
     error: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -130,11 +133,24 @@ CREATE TABLE IF NOT EXISTS source_passages (
     page INTEGER,
     passage_hash TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS checkpoints (
+    version_id TEXT NOT NULL REFERENCES case_versions(version_id),
+    stage TEXT NOT NULL,
+    input_artifact_hashes_json TEXT NOT NULL,
+    output_artifact_hashes_json TEXT NOT NULL,
+    typed_state_json TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(version_id, stage, created_at)
+);
 CREATE INDEX IF NOT EXISTS idx_case_versions_case ON case_versions(case_id, version_number);
 CREATE INDEX IF NOT EXISTS idx_run_events_version ON run_events(version_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_provider_calls_version ON provider_calls(version_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_records_version ON evidence_records(version_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_records_hash ON evidence_records(content_hash, origin_hash);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_compatible
+    ON checkpoints(version_id, policy_version, schema_version, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_records_version_hash
     ON evidence_records(version_id, content_hash);
 """
@@ -158,6 +174,25 @@ class SQLiteCaseRepository:
             if "source_name" not in {str(row[1]) for row in columns}:
                 await connection.execute(
                     "ALTER TABLE evidence_records ADD COLUMN source_name TEXT NOT NULL DEFAULT ''"
+                )
+            version_columns = await (
+                await connection.execute("PRAGMA table_info(case_versions)")
+            ).fetchall()
+            existing_version_columns = {str(row[1]) for row in version_columns}
+            if "request_schema_version" not in existing_version_columns:
+                await connection.execute(
+                    "ALTER TABLE case_versions ADD COLUMN request_schema_version TEXT"
+                )
+            if "report_schema_version" not in existing_version_columns:
+                await connection.execute(
+                    "ALTER TABLE case_versions ADD COLUMN report_schema_version TEXT"
+                )
+            provider_call_columns = await (
+                await connection.execute("PRAGMA table_info(provider_calls)")
+            ).fetchall()
+            if "artifact_id" not in {str(row[1]) for row in provider_call_columns}:
+                await connection.execute(
+                    "ALTER TABLE provider_calls ADD COLUMN artifact_id TEXT"
                 )
             await connection.commit()
 
@@ -386,7 +421,17 @@ class SQLiteCaseRepository:
                 (version_id, case_id, version_number, parent_version_id, status, outcome,
                  active_stage, request_json, report_json, error, created_at, updated_at)
                 VALUES (?, ?, 1, NULL, 'QUEUED', NULL, NULL, ?, NULL, NULL, ?, ?)""",
-                (version_id, case_id, json.dumps(request_payload), now, now),
+                (
+                    version_id,
+                    case_id,
+                    self._serialize_case_payload(request_payload),
+                    now,
+                    now,
+                ),
+            )
+            await connection.execute(
+                "UPDATE case_versions SET request_schema_version = ? WHERE version_id = ?",
+                ("case-payload-v1", version_id),
             )
             await connection.commit()
         return await self.get_version(version_id)
@@ -425,10 +470,14 @@ class SQLiteCaseRepository:
                     case_id,
                     version_number,
                     parent_version_id,
-                    json.dumps(request_payload),
+                    self._serialize_case_payload(request_payload),
                     now,
                     now,
                 ),
+            )
+            await connection.execute(
+                "UPDATE case_versions SET request_schema_version = ? WHERE version_id = ?",
+                ("case-payload-v1", version_id),
             )
             await connection.execute(
                 "UPDATE cases SET current_version_id = ?, updated_at = ? WHERE case_id = ?",
@@ -517,7 +566,16 @@ class SQLiteCaseRepository:
             await connection.execute(
                 """UPDATE case_versions SET status = 'COMPLETED', outcome = ?,
                 active_stage = NULL, report_json = ?, updated_at = ? WHERE version_id = ?""",
-                (outcome, json.dumps(report_payload), now, version_id),
+                (
+                    outcome,
+                    self._serialize_case_payload(report_payload),
+                    now,
+                    version_id,
+                ),
+            )
+            await connection.execute(
+                "UPDATE case_versions SET report_schema_version = ? WHERE version_id = ?",
+                ("case-payload-v1", version_id),
             )
             await connection.commit()
         return await self.get_version(version_id)
@@ -597,8 +655,91 @@ class SQLiteCaseRepository:
             rows = await cursor.fetchall()
         return [await self.get_version(row[0]) for row in rows]
 
+    async def save_checkpoint(self, checkpoint: CheckpointEnvelope) -> None:
+        async with aiosqlite.connect(self.database_path) as connection:
+            await connection.execute("PRAGMA foreign_keys=ON")
+            await connection.execute(
+                """INSERT INTO checkpoints
+                (version_id, stage, input_artifact_hashes_json, output_artifact_hashes_json,
+                 typed_state_json, schema_version, policy_version, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    checkpoint.version_id,
+                    checkpoint.stage,
+                    json.dumps(checkpoint.input_artifact_hashes, sort_keys=True),
+                    json.dumps(checkpoint.output_artifact_hashes, sort_keys=True),
+                    json.dumps(checkpoint.typed_state_json, sort_keys=True),
+                    checkpoint.schema_version,
+                    checkpoint.policy_version,
+                    checkpoint.created_at.isoformat(),
+                ),
+            )
+            await connection.commit()
+
+    async def latest_compatible_checkpoint(
+        self,
+        version_id: str,
+        *,
+        policy_version: str,
+        input_artifact_hashes: list[str],
+        schema_version: str = "checkpoint-v1",
+    ) -> CheckpointEnvelope | None:
+        normalized_inputs = sorted(input_artifact_hashes)
+        async with aiosqlite.connect(self.database_path) as connection:
+            cursor = await connection.execute(
+                """SELECT version_id, stage, input_artifact_hashes_json,
+                output_artifact_hashes_json, typed_state_json, schema_version,
+                policy_version, created_at FROM checkpoints
+                WHERE version_id = ? AND policy_version = ? AND schema_version = ?
+                ORDER BY created_at DESC""",
+                (version_id, policy_version, schema_version),
+            )
+            rows = await cursor.fetchall()
+        for row in rows:
+            if sorted(json.loads(str(row[2]))) != normalized_inputs:
+                continue
+            return CheckpointEnvelope(
+                version_id=str(row[0]),
+                stage=str(row[1]),
+                input_artifact_hashes=json.loads(str(row[2])),
+                output_artifact_hashes=json.loads(str(row[3])),
+                typed_state_json=json.loads(str(row[4])),
+                schema_version=str(row[5]),
+                policy_version=str(row[6]),
+                created_at=datetime.fromisoformat(str(row[7])),
+            )
+        return None
+
+    @staticmethod
+    def _serialize_case_payload(payload: dict[str, object]) -> str:
+        return json.dumps(
+            {"schema_version": "case-payload-v1", "payload": payload}, sort_keys=True
+        )
+
+    @staticmethod
+    def _deserialize_case_payload(raw_payload: object) -> tuple[dict[str, object], str]:
+        parsed = json.loads(str(raw_payload))
+        if (
+            isinstance(parsed, dict)
+            and isinstance(parsed.get("schema_version"), str)
+            and isinstance(parsed.get("payload"), dict)
+        ):
+            return parsed["payload"], parsed["schema_version"]
+        if not isinstance(parsed, dict):
+            raise ValueError("Case payload must be a JSON object")
+        return parsed, "phase2-v1"
+
     @staticmethod
     def _version_from_row(row: tuple[object, ...]) -> CaseVersionRecord:
+        request_payload, request_schema_version = SQLiteCaseRepository._deserialize_case_payload(
+            row[10]
+        )
+        report_payload = None
+        report_schema_version = None
+        if row[11] is not None:
+            report_payload, report_schema_version = SQLiteCaseRepository._deserialize_case_payload(
+                row[11]
+            )
         return CaseVersionRecord(
             version_id=str(row[0]),
             case_id=str(row[1]),
@@ -610,8 +751,10 @@ class SQLiteCaseRepository:
             status=str(row[7]),
             outcome=None if row[8] is None else str(row[8]),
             active_stage=None if row[9] is None else str(row[9]),
-            request_payload=json.loads(str(row[10])),
-            report_payload=None if row[11] is None else json.loads(str(row[11])),
+            request_payload=request_payload,
+            report_payload=report_payload,
+            request_schema_version=request_schema_version,
+            report_schema_version=report_schema_version,
             error=None if row[12] is None else str(row[12]),
             created_at=datetime.fromisoformat(str(row[13])),
             updated_at=datetime.fromisoformat(str(row[14])),

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ArtifactRecord(BaseModel):
@@ -12,6 +12,18 @@ class ArtifactRecord(BaseModel):
     size_bytes: int
     mime_type: str
     relative_path: str
+
+
+class ArtifactReference(BaseModel):
+    """Immutable reference to bytes held by the content-addressed artifact store."""
+
+    model_config = ConfigDict(frozen=True)
+
+    artifact_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mime_type: str
+    size_bytes: int = Field(ge=0)
+    locator: str | None = None
 
 
 class ArtifactStore:

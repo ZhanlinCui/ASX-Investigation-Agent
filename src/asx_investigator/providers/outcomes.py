@@ -5,6 +5,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 
+from asx_investigator.storage.artifacts import ArtifactReference
+
 
 class ProviderStatus(StrEnum):
     SUCCESS = "SUCCESS"
@@ -23,6 +25,7 @@ class ProviderOutcome[T](BaseModel):
     provenance: dict[str, str] = Field(default_factory=dict)
     error_code: str | None = None
     source_version: str | None = None
+    artifact: ArtifactReference | None = None
 
     @model_validator(mode="after")
     def validate_data_for_success(self) -> ProviderOutcome[T]:
