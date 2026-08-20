@@ -5,7 +5,7 @@
 
 **Authoritative phase plan:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
 **Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
-**Next-stage design:** `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md`
+**Next activation plan:** `docs/phase-plans/phase-04-live-validation-activation.md`
 
 ## Product contract
 
@@ -111,6 +111,10 @@ Provider cache is not memory. It has a source, retrieval time, expiry and conten
 Development, regression and sealed holdout cases are separated. Gold labels record the evidence cutoff, leading driver, acceptable alternatives, prohibited future evidence, mechanical flags, coverage expectation and a typed `REQUIRED`, `ALLOWED` or `FORBIDDEN` abstention policy.
 
 Deterministic graders own time, session, citation, numeric and provider-failure checks. Top-1 and top-2 measure only published `EXPLAINED` outcomes; abstentions are evaluated by their separate policy gates. Gold replay compares validated decisions, assertion/artifact identities and policy trace, never private model prose. A model judge may help classify failures but cannot override a hard gate or a human label.
+
+## Phase 4: Live Validation Activation
+
+Phase 4 is deliberately blocked until external provider credentials, a real 24-case development corpus, a separately controlled 12-case holdout and auditable model-usage/pricing evidence are provided. It exercises the Phase 3 architecture and makes a measured release decision; it does not expand product scope. See `docs/phase-plans/phase-04-live-validation-activation.md`.
 
 ## Later phases
 
