@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -17,6 +18,11 @@ from asx_investigator.domain.models import (
     ValidationResult,
 )
 from asx_investigator.evidence.context import EvidencePacket
+from asx_investigator.investigation.ledger import (
+    LEDGER_SCHEMA_VERSION,
+    LedgerBuilder,
+    LedgerIntegrityError,
+)
 from asx_investigator.market.forensics import DailyBar
 from asx_investigator.providers.market import CorporateAction, MarketDataResult
 from asx_investigator.providers.outcomes import ProviderOutcome
@@ -49,6 +55,27 @@ def _unique_hashes(values: list[str]) -> list[str]:
     return sorted(set(values))
 
 
+def _state_hash(stage: str, value: object) -> str:
+    """Hash a deterministic JSON representation without including checkpoint metadata."""
+
+    def normalize(item: object) -> object:
+        if isinstance(item, BaseModel):
+            return item.model_dump(mode="json")
+        if isinstance(item, list):
+            return [normalize(entry) for entry in item]
+        if isinstance(item, dict):
+            return {str(key): normalize(entry) for key, entry in item.items()}
+        return item
+
+    payload = json.dumps(
+        {"stage": stage, "state": normalize(value)},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 class MarketDataCheckpoint(BaseModel):
     """Only the JSON-safe market state needed after the provider boundary."""
 
@@ -77,6 +104,8 @@ class InvestigationState(BaseModel):
     request_artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     initial_input_artifact_hashes: list[str] = Field(min_length=1)
     stage_output_artifact_hashes: dict[str, list[str]] = Field(default_factory=dict)
+    ledger_stage_output_hashes: dict[str, list[str]] = Field(default_factory=dict)
+    ledger_schema_version: str | None = None
     completed_stage: str | None = None
     instrument: InstrumentIdentity | None = None
     session: TradingSession | None = None
@@ -163,18 +192,40 @@ class InvestigationState(BaseModel):
         for stage in required_output_stages:
             if self.output_hashes(stage) != self._derived_output_hashes(stage):
                 raise ValueError("checkpoint output hashes do not match completed state")
-        if self.evidence is not None:
-            evidence_hashes = {
-                _normalized_hash(item.content_hash) for item in self.evidence
-            }
-            discovery_hashes = set(
-                self.stage_output_artifact_hashes.get(
-                    "discover_and_freeze_documents", []
-                )
-            )
-            if not discovery_hashes.issubset(evidence_hashes):
-                raise ValueError("checkpoint evidence does not contain frozen discovery outputs")
+        self._validate_ledger(boundary)
         return self
+
+    def _validate_ledger(self, boundary: int) -> None:
+        """Require a complete ledger whenever a checkpoint has begun emitting one."""
+
+        if self.ledger_schema_version is None:
+            if self.ledger or self.ledger_stage_output_hashes:
+                raise ValueError("checkpoint ledger is missing its schema marker")
+            return
+        if self.ledger_schema_version != LEDGER_SCHEMA_VERSION:
+            raise ValueError("checkpoint ledger schema is not supported")
+        if not self.ledger:
+            raise ValueError("checkpoint ledger is missing its required entries")
+        try:
+            LedgerBuilder(self.ledger)
+        except LedgerIntegrityError as error:
+            raise ValueError(f"checkpoint ledger is invalid: {error}") from error
+        stage_entries = [entry for entry in self.ledger if entry.status != "RESUMED"]
+        completed_stages = [entry.stage for entry in stage_entries]
+        expected_stages = list(DURABLE_STAGE_ORDER[: boundary + 1])
+        if completed_stages != expected_stages:
+            raise ValueError("checkpoint ledger completed stages do not match state")
+        for entry in self.ledger:
+            if entry.status not in {"COMPLETED", "RESUMED", "SKIPPED"}:
+                raise ValueError("checkpoint ledger has an unsupported entry status")
+            if entry.stage not in DURABLE_STAGE_ORDER:
+                raise ValueError("checkpoint ledger has an unknown stage")
+            if DURABLE_STAGE_ORDER.index(entry.stage) > boundary:
+                raise ValueError("checkpoint ledger contains a future stage")
+            if entry.input_hashes != self.ledger_input_hashes(entry.stage):
+                raise ValueError("checkpoint ledger input hashes do not match state")
+            if entry.output_hashes != self.ledger_output_hashes(entry.stage):
+                raise ValueError("checkpoint ledger output hashes do not match state")
 
     def complete(self, stage: str) -> None:
         if stage not in DURABLE_STAGE_ORDER:
@@ -190,6 +241,16 @@ class InvestigationState(BaseModel):
             stage: self._derived_output_hashes(stage),
         }
         self.completed_stage = stage
+
+    def capture_ledger_output(self, stage: str) -> None:
+        if stage not in DURABLE_STAGE_ORDER:
+            raise ValueError(f"{stage} is not a durable checkpoint stage")
+        if stage in self.ledger_stage_output_hashes:
+            return
+        self.ledger_stage_output_hashes = {
+            **self.ledger_stage_output_hashes,
+            stage: self._derived_ledger_output_hashes(stage),
+        }
 
     def has_completed(self, stage: str) -> bool:
         if self.completed_stage is None:
@@ -241,6 +302,49 @@ class InvestigationState(BaseModel):
         hashes = list(self.initial_input_artifact_hashes)
         for earlier_stage in DURABLE_STAGE_ORDER[:boundary]:
             hashes.extend(self.output_hashes(earlier_stage))
+        return _unique_hashes(hashes)
+
+    def ledger_output_hashes(self, stage: str) -> list[str]:
+        if stage not in DURABLE_STAGE_ORDER:
+            raise ValueError(f"{stage} is not a durable checkpoint stage")
+        if stage not in self.ledger_stage_output_hashes:
+            raise ValueError(f"ledger output was not captured for {stage}")
+        return list(self.ledger_stage_output_hashes[stage])
+
+    def _derived_ledger_output_hashes(self, stage: str) -> list[str]:
+        values: dict[str, object] = {
+            "resolve_instrument": self.instrument,
+            "resolve_asx_session": self.session,
+            "acquire_market_data": self.market_data,
+            "test_mechanical_explanations": {
+                "corporate_actions": self.corporate_actions,
+                "validations": self.validations,
+            },
+            "discover_and_freeze_documents": self.evidence,
+            "extract_exact_passages": {
+                "coverage_complete": self.coverage_complete,
+                "coverage_gaps": self.coverage_gaps,
+                "conflicts": self.conflicts,
+            },
+            "assemble_evidence_packet": self.packet,
+            "generate_ranked_hypotheses": self.hypothesis_batch,
+            "targeted_retrieval": {
+                "evidence": self.evidence,
+                "packet": self.packet,
+                "targeted_evidence_ids": self.targeted_evidence_ids,
+            },
+            "challenge_leading_hypothesis": self.challenge,
+            "deterministic_validation": self.validations,
+        }
+        return [_state_hash(stage, values[stage])]
+
+    def ledger_input_hashes(self, stage: str) -> list[str]:
+        if stage not in DURABLE_STAGE_ORDER:
+            raise ValueError(f"{stage} is not a durable checkpoint stage")
+        boundary = DURABLE_STAGE_ORDER.index(stage)
+        hashes = list(self.initial_input_artifact_hashes)
+        for earlier_stage in DURABLE_STAGE_ORDER[:boundary]:
+            hashes.extend(self.ledger_output_hashes(earlier_stage))
         return _unique_hashes(hashes)
 
 

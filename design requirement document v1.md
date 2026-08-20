@@ -2,7 +2,7 @@
 ## Product Design Requirement
 
 **Version:** 2.3
-**Status:** Phase 2.8 product baseline; P3.0 contracts complete; P3.1 kernel and ledger in progress
+**Status:** Phase 2.8 product baseline; P3.0 contracts and P3.1 kernel/ledger complete; P3.2 assertion reasoning planned
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 

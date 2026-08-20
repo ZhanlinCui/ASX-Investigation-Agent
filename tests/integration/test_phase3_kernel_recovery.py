@@ -20,6 +20,7 @@ async def test_kernel_records_hash_bound_append_only_ledger_entries() -> None:
         "acquire_market_data",
     ]
     assert all(entry.input_hashes for entry in report.ledger)
+    assert all(entry.output_hashes for entry in report.ledger)
     assert report.ledger[-1].status == "COMPLETED"
 
 
@@ -76,6 +77,38 @@ async def test_resume_keeps_prior_ledger_entries_without_repeating_market_provid
             request_artifact_hash=request_hash,
             input_artifact_hashes=[request_hash],
             on_stage=observe,
+        )
+
+    tampered_state = dict(checkpoints[-1].typed_state_json)
+    tampered_state["ledger"] = tampered_state["ledger"][:1]
+    tampered_checkpoint = checkpoints[-1].model_copy(
+        update={"typed_state_json": tampered_state}
+    )
+    with pytest.raises(ValueError, match="ledger completed stages"):
+        await service.investigate(
+            "BHP",
+            "2026-08-20",
+            mode="RECORDED",
+            version_id="version-1",
+            request_artifact_hash=request_hash,
+            input_artifact_hashes=[request_hash],
+            resume_checkpoint=tampered_checkpoint,
+        )
+
+    empty_ledger_state = dict(checkpoints[-1].typed_state_json)
+    empty_ledger_state["ledger"] = []
+    empty_ledger_checkpoint = checkpoints[-1].model_copy(
+        update={"typed_state_json": empty_ledger_state}
+    )
+    with pytest.raises(ValueError, match="missing its required entries"):
+        await service.investigate(
+            "BHP",
+            "2026-08-20",
+            mode="RECORDED",
+            version_id="version-1",
+            request_artifact_hash=request_hash,
+            input_artifact_hashes=[request_hash],
+            resume_checkpoint=empty_ledger_checkpoint,
         )
 
     report = await service.investigate(

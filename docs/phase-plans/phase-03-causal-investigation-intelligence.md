@@ -1,6 +1,6 @@
 # Phase 3: Causal Investigation Intelligence
 
-**Status:** P3.0 complete; P3.1 in progress
+**Status:** P3.0 and P3.1 complete; P3.2 next
 **Branch:** `codex/phase3-causal-intelligence`
 **Design:** `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md`
 **Implementation plan:** `docs/superpowers/plans/2026-08-20-phase-3-causal-investigation-intelligence.md`
@@ -14,7 +14,7 @@ Build an assertion-bound causal investigation agent for unusual ASX equity moves
 | Milestone | Deliverable | Status |
 |---|---|---|
 | P3.0 | Domain contracts and synchronized documentation | Complete |
-| P3.1 | Investigation kernel and append-only decision ledger | In progress |
+| P3.1 | Investigation kernel and append-only decision ledger | Complete |
 | P3.2 | Exact evidence assertions, mechanism tests and deterministic claim compiler | Planned |
 | P3.3 | Shared-memory admission policy and case isolation | Planned |
 | P3.4 | Production-path frozen gold case execution | Planned |
