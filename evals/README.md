@@ -37,9 +37,11 @@ The release remains recorded-only until 24 independently adjudicated point-in-ti
 
 ## External agent execution
 
-An external frozen-corpus run requires `GEMINI_API_KEY` plus immutable model
-usage artifacts priced with a versioned AUD schedule tied to the deployed model
-configuration. The runner never accepts a caller-supplied cost estimate:
+An external frozen-corpus run requires `GEMINI_API_KEY`,
+`GEMINI_PRICING_SCHEDULE_VERSION`, `GEMINI_INPUT_AUD_PER_MILLION_TOKENS` and
+`GEMINI_OUTPUT_AUD_PER_MILLION_TOKENS`. Gemini response usage is captured after
+each structured call and priced into immutable artifacts tied to the deployed
+model configuration. The runner never accepts a caller-supplied cost estimate:
 
 ```bash
 .venv/bin/python evals/run_gold_evals.py --format markdown

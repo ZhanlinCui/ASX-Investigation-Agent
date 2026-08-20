@@ -20,7 +20,11 @@ from asx_investigator.evaluation.gold import (
     execute_gold_corpus,
     run_external_gold,
 )
-from asx_investigator.evaluation.models import GoldExecutionReport, ModelUsageCostArtifact
+from asx_investigator.evaluation.models import (
+    AudPricingSchedule,
+    GoldExecutionReport,
+    ModelUsageCostArtifact,
+)
 from tests.unit.evaluation.test_bundles import _bind_metadata_artifact, write_bundle
 
 
@@ -120,10 +124,17 @@ async def test_gold_runner_executes_a_frozen_bundle_not_a_prebuilt_report(
 
 
 class FrozenStructuredReasoner:
+    pricing_schedule = AudPricingSchedule.recorded(
+        version="gemini-aud-test-v1",
+        input_aud_per_million_tokens=1,
+        output_aud_per_million_tokens=1,
+    )
     model_configuration = {
         "provider": "FROZEN_TEST_REASONER",
         "model": "frozen-test-v1",
         "structured_calls_max": "2",
+        "pricing_schedule_version": pricing_schedule.version,
+        "pricing_schedule_hash": pricing_schedule.artifact_hash,
     }
 
     def __init__(self) -> None:
@@ -158,6 +169,7 @@ class FrozenStructuredReasoner:
             ModelUsageCostArtifact.recorded(
                 model_configuration=self.model_configuration,
                 pricing_schedule_version="gemini-aud-test-v1",
+                pricing_schedule_hash=self.pricing_schedule.artifact_hash,
                 input_tokens=100,
                 output_tokens=20,
                 measured_cost_aud=0.003,
@@ -165,6 +177,7 @@ class FrozenStructuredReasoner:
             ModelUsageCostArtifact.recorded(
                 model_configuration=self.model_configuration,
                 pricing_schedule_version="gemini-aud-test-v1",
+                pricing_schedule_hash=self.pricing_schedule.artifact_hash,
                 input_tokens=80,
                 output_tokens=15,
                 measured_cost_aud=0.003,
@@ -176,9 +189,8 @@ class AlternatingProseReasoner(FrozenStructuredReasoner):
     """Emit different private model prose while retaining the same decision IDs."""
 
     model_configuration = {
-        "provider": "FROZEN_TEST_REASONER",
+        **FrozenStructuredReasoner.model_configuration,
         "model": "alternating-prose-v1",
-        "structured_calls_max": "2",
     }
 
     async def generate(self, packet):
@@ -318,6 +330,32 @@ async def test_external_gold_runner_fails_closed_without_immutable_usage_cost_ar
 
     assert result.status == "NOT_RUN"
     assert "immutable recorded model usage" in (result.reason or "")
+
+
+async def test_external_gold_execution_does_not_call_an_unpriced_reasoner(
+    tmp_path: Path,
+) -> None:
+    artifacts = write_bundle(tmp_path / "gold-01")
+    _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
+    corpus = load_frozen_gold_corpus(tmp_path, kind="development")
+
+    class UnpricedReasoner(FrozenStructuredReasoner):
+        model_configuration = {
+            "provider": "FROZEN_TEST_REASONER",
+            "model": "unpriced-test-v1",
+            "structured_calls_max": "2",
+        }
+
+        def consume_model_usage_cost_artifacts(self) -> list[ModelUsageCostArtifact]:
+            return []
+
+    reasoner = UnpricedReasoner()
+    result = await execute_gold_corpus(corpus, reasoner=reasoner)
+
+    assert result.status == "NOT_RUN"
+    assert "AUD pricing" in (result.reason or "")
+    assert reasoner.generate_calls == 0
+    assert reasoner.challenge_calls == 0
 
 
 async def test_measured_usage_cost_cannot_be_replaced_by_a_tiny_caller_estimate(

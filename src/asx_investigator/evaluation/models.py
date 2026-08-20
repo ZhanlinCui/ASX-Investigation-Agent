@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -14,6 +15,7 @@ def _model_usage_cost_hash(
     *,
     model_configuration: dict[str, str],
     pricing_schedule_version: str,
+    pricing_schedule_hash: str,
     input_tokens: int,
     output_tokens: int,
     measured_cost_aud: float,
@@ -22,9 +24,27 @@ def _model_usage_cost_hash(
         "schema_version": "model-usage-cost-v1",
         "model_configuration": model_configuration,
         "pricing_schedule_version": pricing_schedule_version,
+        "pricing_schedule_hash": pricing_schedule_hash,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "measured_cost_aud": measured_cost_aud,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _pricing_schedule_hash(
+    *,
+    version: str,
+    input_aud_per_million_tokens: Decimal,
+    output_aud_per_million_tokens: Decimal,
+) -> str:
+    payload = {
+        "schema_version": "aud-pricing-schedule-v1",
+        "version": version,
+        "input_aud_per_million_tokens": str(input_aud_per_million_tokens),
+        "output_aud_per_million_tokens": str(output_aud_per_million_tokens),
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -187,6 +207,54 @@ class GoldExecutionCase(BaseModel):
     cost_artifact_hashes: list[str] = Field(default_factory=list)
 
 
+class AudPricingSchedule(BaseModel):
+    """Versioned, immutable AUD token pricing used for release-cost evidence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: Literal["aud-pricing-schedule-v1"] = "aud-pricing-schedule-v1"
+    version: str = Field(min_length=1, max_length=120)
+    input_aud_per_million_tokens: Decimal = Field(gt=0)
+    output_aud_per_million_tokens: Decimal = Field(gt=0)
+    artifact_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def recorded(
+        cls,
+        *,
+        version: str,
+        input_aud_per_million_tokens: Decimal,
+        output_aud_per_million_tokens: Decimal,
+    ) -> AudPricingSchedule:
+        return cls(
+            version=version,
+            input_aud_per_million_tokens=input_aud_per_million_tokens,
+            output_aud_per_million_tokens=output_aud_per_million_tokens,
+            artifact_hash=_pricing_schedule_hash(
+                version=version,
+                input_aud_per_million_tokens=input_aud_per_million_tokens,
+                output_aud_per_million_tokens=output_aud_per_million_tokens,
+            ),
+        )
+
+    @model_validator(mode="after")
+    def validate_artifact_hash(self) -> AudPricingSchedule:
+        expected = _pricing_schedule_hash(
+            version=self.version,
+            input_aud_per_million_tokens=self.input_aud_per_million_tokens,
+            output_aud_per_million_tokens=self.output_aud_per_million_tokens,
+        )
+        if self.artifact_hash != expected:
+            raise ValueError("AUD pricing schedule hash does not match its contents")
+        return self
+
+    def cost_for(self, *, input_tokens: int, output_tokens: int) -> Decimal:
+        return (
+            self.input_aud_per_million_tokens * input_tokens
+            + self.output_aud_per_million_tokens * output_tokens
+        ) / Decimal("1000000")
+
+
 class ModelUsageCostArtifact(BaseModel):
     """An immutable, priced model-usage observation for release evaluation."""
 
@@ -195,6 +263,7 @@ class ModelUsageCostArtifact(BaseModel):
     schema_version: Literal["model-usage-cost-v1"] = "model-usage-cost-v1"
     model_configuration: dict[str, str]
     pricing_schedule_version: str = Field(min_length=1, max_length=120)
+    pricing_schedule_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
     measured_cost_aud: float = Field(gt=0)
@@ -206,6 +275,7 @@ class ModelUsageCostArtifact(BaseModel):
         *,
         model_configuration: dict[str, str],
         pricing_schedule_version: str,
+        pricing_schedule_hash: str,
         input_tokens: int,
         output_tokens: int,
         measured_cost_aud: float,
@@ -213,6 +283,7 @@ class ModelUsageCostArtifact(BaseModel):
         payload = {
             "model_configuration": model_configuration,
             "pricing_schedule_version": pricing_schedule_version,
+            "pricing_schedule_hash": pricing_schedule_hash,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "measured_cost_aud": measured_cost_aud,
@@ -227,6 +298,7 @@ class ModelUsageCostArtifact(BaseModel):
         expected = _model_usage_cost_hash(
             model_configuration=self.model_configuration,
             pricing_schedule_version=self.pricing_schedule_version,
+            pricing_schedule_hash=self.pricing_schedule_hash,
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
             measured_cost_aud=self.measured_cost_aud,

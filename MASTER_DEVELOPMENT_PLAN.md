@@ -114,7 +114,7 @@ Deterministic graders own time, session, citation, numeric and provider-failure 
 
 ## Phase 4: Live Validation Activation
 
-Phase 4 is deliberately blocked until external provider credentials, a real 24-case development corpus, a separately controlled 12-case holdout and auditable model-usage/pricing evidence are provided. It exercises the Phase 3 architecture and makes a measured release decision; it does not expand product scope. See `docs/phase-plans/phase-04-live-validation-activation.md`.
+Phase 4 has implemented its model-usage and measured-AUD-cost readiness boundary. External execution remains blocked until provider credentials, a real 24-case development corpus and a separately controlled 12-case holdout are provided. It exercises the Phase 3 architecture and makes a measured release decision; it does not expand product scope. See `docs/phase-plans/phase-04-live-validation-activation.md`.
 
 ## Later phases
 

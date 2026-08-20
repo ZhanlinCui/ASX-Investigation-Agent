@@ -1,6 +1,6 @@
 # Phase 4: Live Validation Activation
 
-**Status:** Blocked by external inputs; no product-scope expansion is authorized
+**Status:** Activation runtime partially implemented; external execution blocked by supplied inputs
 **Prerequisite implementation:** Phase 3 recorded-release candidate
 **Detailed runbook:** `docs/superpowers/plans/2026-08-21-phase-4-live-validation-activation.md`
 
@@ -19,9 +19,9 @@ Turn the recorded-release candidate into a measured release candidate by running
 
 | Milestone | Deliverable | Gate |
 |---|---|---|
-| P4.0 | Credential and corpus preflight | All secrets remain outside the repository; corpus admission is valid and labels remain sealed |
-| P4.1 | Credentialed provider smoke | Approved providers return auditable outcomes for a controlled ASX session; provider failures remain explicit |
-| P4.2 | Development evaluation | 24 real point-in-time cases execute through the deployed structured-reasoner path with measured AUD cost, latency and raw counts |
+| P4.0 | Credential and corpus preflight | Implemented; all secrets remain outside the repository and invalid/missing inputs fail closed |
+| P4.1 | Credentialed provider smoke | Blocked pending approved provider credentials and controlled ASX fixture |
+| P4.2 | Development evaluation | Runtime implemented; blocked pending 24 real point-in-time cases and external execution |
 | P4.3 | Sealed holdout and release decision | Independent grader reports the 12-case result and per-case failure analysis without exposing labels to runtime |
 
 ## Non-negotiable gates
@@ -35,3 +35,7 @@ Turn the recorded-release candidate into a measured release candidate by running
 ## Explicitly deferred
 
 No alerts, portfolio features, trading execution, automatic cross-case learning, multi-user access, new data vendors or vector database are added in this phase.
+
+## Implemented readiness boundary
+
+The configured Gemini reasoner now captures response token usage, derives AUD cost from a versioned hash-bound pricing schedule, and emits immutable usage-cost artifacts. External evaluation rejects absent/invalid pricing before it calls the model, so a caller-supplied estimate can never become measured cost. The remaining execution gates require only external credentials, corpora and external holdout grading.

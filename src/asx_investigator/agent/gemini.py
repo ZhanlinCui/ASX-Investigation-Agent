@@ -6,12 +6,14 @@ from typing import Any
 
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 from asx_investigator.agent.reasoning import (
     ChallengeResult,
     HypothesisBatch,
     ReasoningUnavailable,
 )
+from asx_investigator.evaluation.models import AudPricingSchedule, ModelUsageCostArtifact
 from asx_investigator.evidence.context import EvidencePacket
 from asx_investigator.settings import Settings
 
@@ -31,12 +33,45 @@ class GeminiInvestigationReasoner:
             genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
         )
         self.timeout_seconds = timeout_seconds
+        self._pricing_schedule = self._pricing_schedule_from_settings(settings)
+        self._usage_cost_artifacts: list[ModelUsageCostArtifact] = []
         self.model_configuration = {
             "provider": "Google Gemini",
             "model": self.model,
             "temperature": "0.1",
             "structured_calls_max": "2",
         }
+        if self._pricing_schedule is not None:
+            self.model_configuration.update(
+                {
+                    "pricing_schedule_version": self._pricing_schedule.version,
+                    "pricing_schedule_hash": self._pricing_schedule.artifact_hash,
+                }
+            )
+
+    @staticmethod
+    def _pricing_schedule_from_settings(settings: Settings) -> AudPricingSchedule | None:
+        values = (
+            settings.gemini_pricing_schedule_version,
+            settings.gemini_input_aud_per_million_tokens,
+            settings.gemini_output_aud_per_million_tokens,
+        )
+        if any(value is None for value in values):
+            return None
+        try:
+            return AudPricingSchedule.recorded(
+                version=settings.gemini_pricing_schedule_version,
+                input_aud_per_million_tokens=settings.gemini_input_aud_per_million_tokens,
+                output_aud_per_million_tokens=settings.gemini_output_aud_per_million_tokens,
+            )
+        except ValidationError:
+            return None
+
+    def consume_model_usage_cost_artifacts(self) -> list[ModelUsageCostArtifact]:
+        """Drain cost records created by the immediately preceding model operation."""
+
+        artifacts, self._usage_cost_artifacts = self._usage_cost_artifacts, []
+        return artifacts
 
     async def generate(self, packet: EvidencePacket) -> HypothesisBatch:
         if self.client is None:
@@ -133,6 +168,7 @@ class GeminiInvestigationReasoner:
                 ),
                 timeout=self.timeout_seconds,
             )
+            self._record_usage(getattr(response, "usage_metadata", None))
             if not response.text:
                 raise ReasoningUnavailable("Gemini returned an empty structured response")
             return schema.model_validate_json(response.text)
@@ -142,3 +178,39 @@ class GeminiInvestigationReasoner:
             raise ReasoningUnavailable(
                 f"Gemini did not return a valid {schema.__name__} response"
             ) from error
+
+    def _record_usage(self, usage_metadata: object) -> None:
+        if self._pricing_schedule is None:
+            return
+        input_tokens = self._usage_token_count(usage_metadata, "prompt_token_count")
+        output_tokens = self._usage_token_count(usage_metadata, "candidates_token_count")
+        if input_tokens is None or output_tokens is None:
+            return
+        cost = self._pricing_schedule.cost_for(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        if cost <= 0:
+            return
+        self._usage_cost_artifacts.append(
+            ModelUsageCostArtifact.recorded(
+                model_configuration=self.model_configuration,
+                pricing_schedule_version=self._pricing_schedule.version,
+                pricing_schedule_hash=self._pricing_schedule.artifact_hash,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                measured_cost_aud=float(cost),
+            )
+        )
+
+    @staticmethod
+    def _usage_token_count(usage_metadata: object, field: str) -> int | None:
+        if isinstance(usage_metadata, dict):
+            value = usage_metadata.get(field)
+        else:
+            value = getattr(usage_metadata, field, None)
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int) and value >= 0:
+            return value
+        return None

@@ -31,6 +31,8 @@
 
 ### Task 1: Capture hash-bound Gemini usage and derived AUD cost
 
+**Status:** Implemented and verified locally; external pricing values remain runtime configuration.
+
 **Files:**
 - Modify: `src/asx_investigator/agent/gemini.py`
 - Modify: `src/asx_investigator/evaluation/models.py`
@@ -41,7 +43,7 @@
 - Consumes: Gemini `usage_metadata`, `Settings.gemini_model`, and a versioned AUD pricing schedule.
 - Produces: `ModelUsageCostArtifact.recorded(...)` values through `GeminiInvestigationReasoner.consume_model_usage_cost_artifacts()`.
 
-- [ ] **Step 1: Write failing response-usage tests**
+- [x] **Step 1: Write failing response-usage tests**
 
 ```python
 def test_gemini_reasoner_records_hash_bound_usage_cost_after_structured_call(fake_client):
@@ -62,13 +64,13 @@ def test_gemini_reasoner_rejects_missing_usage_or_pricing(fake_client):
     assert reasoner.consume_model_usage_cost_artifacts() == []
 ```
 
-- [ ] **Step 2: Run the focused tests to verify RED**
+- [x] **Step 2: Run the focused tests to verify RED**
 
 Run: `../../.venv/bin/python -m pytest tests/unit/agent/test_gemini.py -v`
 
 Expected: FAIL because the production reasoner currently does not expose observed usage-cost artifacts.
 
-- [ ] **Step 3: Implement the minimum immutable accounting boundary**
+- [x] **Step 3: Implement the minimum immutable accounting boundary**
 
 ```python
 def consume_model_usage_cost_artifacts(self) -> list[ModelUsageCostArtifact]:
@@ -93,13 +95,13 @@ def _record_usage(self, usage_metadata: object) -> None:
 
 Define `AudPricingSchedule` in `evaluation/models.py` with version, input/output AUD-per-million-token rates and a canonical hash. Read it from non-secret environment configuration. Missing, malformed, zero-cost or mismatched data yields no artifact; the evaluator already returns `NOT_RUN`.
 
-- [ ] **Step 4: Run focused tests to verify GREEN**
+- [x] **Step 4: Run focused tests to verify GREEN**
 
 Run: `../../.venv/bin/python -m pytest tests/unit/agent/test_gemini.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/asx_investigator/agent/gemini.py src/asx_investigator/evaluation/models.py src/asx_investigator/settings.py tests/unit/agent/test_gemini.py
@@ -107,6 +109,8 @@ git commit -m "feat: capture Gemini evaluation usage cost"
 ```
 
 ### Task 2: Prove external development evaluation uses observed model cost
+
+**Status:** Implemented and verified locally; no development corpus is available to execute.
 
 **Files:**
 - Modify: `src/asx_investigator/evaluation/gold.py`
@@ -117,7 +121,7 @@ git commit -m "feat: capture Gemini evaluation usage cost"
 - Consumes: a 24-case frozen development corpus, `GeminiInvestigationReasoner` and its drained `ModelUsageCostArtifact` values.
 - Produces: existing `GoldExecutionReport` case costs and artifact hashes; caller-supplied cost estimates remain unsupported.
 
-- [ ] **Step 1: Write failing execution tests**
+- [x] **Step 1: Write failing execution tests**
 
 ```python
 def test_external_execution_is_not_run_without_observed_reasoner_cost(frozen_development):
@@ -132,13 +136,13 @@ def test_external_execution_records_both_replay_cost_artifacts(frozen_developmen
     assert len(result.cases[0].cost_artifact_hashes) == 4
 ```
 
-- [ ] **Step 2: Run the focused tests to verify RED**
+- [x] **Step 2: Run the focused tests to verify RED**
 
 Run: `../../.venv/bin/python -m pytest tests/integration/test_phase3_gold_execution.py -v`
 
 Expected: FAIL until the real reasoner produces the same immutable artifact contract as fixtures.
 
-- [ ] **Step 3: Retain the fail-closed runner and remove estimate pathways**
+- [x] **Step 3: Retain the fail-closed runner and remove estimate pathways**
 
 ```python
 first_cost = _consume_measured_case_cost(reasoner, model_configuration)
@@ -148,13 +152,13 @@ if first_cost is None:
 
 Keep `evals/run_gold_evals.py` argument-free for cost: it must instantiate the configured reasoner and derive measured values only from post-call artifacts. It exits non-zero only for supplied invalid/failing corpora; absent roots remain `NOT_RUN` with exit zero.
 
-- [ ] **Step 4: Run focused tests to verify GREEN**
+- [x] **Step 4: Run focused tests to verify GREEN**
 
 Run: `../../.venv/bin/python -m pytest tests/integration/test_phase3_gold_execution.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/asx_investigator/evaluation/gold.py evals/run_gold_evals.py tests/integration/test_phase3_gold_execution.py

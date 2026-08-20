@@ -2,7 +2,7 @@
 ## Product Design Requirement
 
 **Version:** 2.5
-**Status:** Phase 3 implementation delivered in the recorded-only release candidate; external evaluation and Live release gates OPEN (`NOT_RUN`)
+**Status:** Phase 3 recorded-release candidate with Phase 4 measured-cost readiness; external evaluation and Live release gates OPEN (`NOT_RUN`)
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -62,6 +62,12 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - Compact audited decision surfaces for exact evidence assertions, mechanism tests, decision-ledger stage and artifact hashes, and ordinal calibration samples.
 - Controlled exact-passage links from an assertion to its frozen source content.
 - Visible `NOT_RUN` states for missing external development gold, sealed holdout and credentialed Live gates. A missing gate never appears as a passing release.
+
+### Phase 4 readiness
+
+- Gemini response token usage and a versioned AUD pricing schedule produce hash-bound, private evaluation-cost artifacts.
+- External evaluation refuses to call the model when pricing evidence is incomplete; a caller cannot substitute an estimate for observed cost.
+- Real development, sealed holdout and credentialed Live execution remain visibly `NOT_RUN` until their external inputs are supplied.
 
 ## Design direction
 

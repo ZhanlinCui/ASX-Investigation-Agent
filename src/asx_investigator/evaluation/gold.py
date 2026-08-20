@@ -236,6 +236,20 @@ async def execute_gold_corpus(
         if reasoner is not None
         else {"provider": "RECORDED_DETERMINISTIC_FIXTURE", "structured_calls_max": "0"}
     )
+    if reasoner is not None and not {
+        "pricing_schedule_version",
+        "pricing_schedule_hash",
+    } <= set(model_configuration):
+        return GoldExecutionReport(
+            corpus=corpus.kind,
+            corpus_version=corpus.corpus_version,
+            status="NOT_RUN",
+            reason=(
+                "External agent release execution requires immutable recorded model usage "
+                "and AUD pricing artifacts tied to the deployed model configuration."
+            ),
+            model_configuration=model_configuration,
+        )
     cases: list[GoldExecutionCase] = []
     errors: list[str] = []
     for bundle in corpus.bundles:
