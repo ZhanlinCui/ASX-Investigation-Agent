@@ -39,3 +39,7 @@ No alerts, portfolio features, trading execution, automatic cross-case learning,
 ## Implemented readiness boundary
 
 The configured Gemini reasoner now captures response token usage, derives AUD cost from a versioned hash-bound pricing schedule, and emits immutable usage-cost artifacts. External evaluation rejects absent/invalid pricing before it calls the model, so a caller-supplied estimate can never become measured cost. The remaining execution gates require only external credentials, corpora and external holdout grading.
+
+## Latest local verification
+
+At the Phase 4 readiness checkpoint: 292 Python tests passed, Ruff and Python compile checks passed, all 24 recorded policy sentinels passed, and the six-test frontend suite plus production build passed. Development gold, sealed holdout and credentialed Live smoke remain `NOT_RUN` because this checkout has none of their external inputs.
