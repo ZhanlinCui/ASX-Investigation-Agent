@@ -1,7 +1,8 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 20 August 2026  
-**Product stage:** Phase 2 implementation  
+**Product stage:** Phase 2 recorded release candidate
+
 **Authoritative phase plan:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
 
 ## Product contract
@@ -19,19 +20,9 @@ Four rules govern every release:
 
 ## Current state
 
-Phase 1 delivered a runnable vertical slice:
+Phase 1 remains the verified request-to-report vertical slice. Phase 2 now adds durable case versions, replayable stages, governed market providers, secure source snapshots, exact passage retrieval, bounded hypothesis/challenge roles, deterministic validation, confidence caps, a 24-case synthetic policy suite and the complete English workbench.
 
-- typed domain models and provider boundaries;
-- ASX session resolution and daily market-move calculations;
-- recorded and basic live modes;
-- evidence timing and citation gates;
-- a constrained Gemini narrative call;
-- provisional confidence rules;
-- asynchronous API, JSON and Markdown output;
-- an English research-workbench UI;
-- one deterministic recorded regression case.
-
-This slice proves the request-to-report path. It is not yet an evidence-complete live product. Live announcement coverage, provider fallback, durable case memory, conflict handling, broad evaluation, case versions, and calibrated confidence remain incomplete.
+The recorded release candidate passes local backend, frontend and synthetic evaluation gates. It is not a Live-validated release: the 24 real adjudicated point-in-time development cases, 12-case sealed holdout and credentialed Live smoke run remain open. Their absence is reported as `NOT_RUN`, never as a pass.
 
 ## Phase 2: Evidence-Complete Live Investigation
 
@@ -41,14 +32,14 @@ Phase 2 makes the vertical slice auditable and recoverable for real cases. It ke
 
 | Milestone | Deliverable | Gate |
 |---|---|---|
-| P2.0 | Contracts and living documentation | Schemas, scope and failure semantics agree across code and docs |
-| P2.1 | Durable case memory | Cases, versions, events and artifacts survive process restart |
-| P2.2 | Live market truth | EODHD primary, Marketstack fallback and material conflicts are explicit |
-| P2.3 | Evidence and context | Frozen sources open at exact passages and produce bounded evidence packs |
-| P2.4 | Controlled investigation | Hypothesis, challenge, validation and abstention terminate under fixed budgets |
-| P2.5 | Confidence semantics | Support, completeness, bands and caps are separate and directly tested |
-| P2.6 | Evaluation | 24 development cases and a 12-case sealed holdout run through one harness |
-| P2.7 | Workbench release | Archive, evidence viewer, versions, trace, CI and configured live smoke pass |
+| P2.0 | Contracts and living documentation | Complete |
+| P2.1 | Durable case memory | Complete |
+| P2.2 | Live market truth | Complete; credentialed smoke not run |
+| P2.3 | Evidence and context | Complete |
+| P2.4 | Controlled investigation | Complete |
+| P2.5 | Confidence semantics | Complete; probability calibration deferred |
+| P2.6 | Evaluation | Harness and 24 synthetic sentinels complete; real corpus and sealed holdout open |
+| P2.7 | Workbench release | Workbench and CI complete; clean checkout and Live smoke gates open |
 
 Each milestone uses test-first implementation and an independent review checkpoint. A later milestone may not hide a failed earlier gate.
 

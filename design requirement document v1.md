@@ -21,16 +21,16 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 
 ## Product state
 
-### Available from Phase 1
+### Implemented baseline
 
 - Ticker and ASX date case creation.
 - Recorded and basic live modes.
 - Market-move summary in AUD.
 - Leading assessment, confidence label and evidence list.
 - JSON and Markdown results.
-- Running, partial and recoverable-failure states.
+- Durable lifecycle and recoverable-failure states.
 
-### Phase 2 delivery
+### Implemented in Phase 2
 
 - Persistent case archive and restart-safe running state.
 - Ranked hypotheses and one challenge result.

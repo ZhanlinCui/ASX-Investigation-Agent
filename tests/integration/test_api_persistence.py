@@ -89,3 +89,29 @@ def test_stage_checkpoints_are_persisted_with_monotonic_sequences(tmp_path: Path
     assert "generate_ranked_hypotheses" not in stages
     assert {"acquire_market_data", "deterministic_validation", "persist_and_publish"} <= stages
     assert report["trace_reference"]["last_sequence"] < sequences[-1]
+
+
+def test_sse_replays_only_events_after_last_event_id(tmp_path: Path) -> None:
+    app = create_app(
+        InvestigationService(RecordedToolGateway.default()),
+        repository=SQLiteCaseRepository(tmp_path / "cases.db"),
+    )
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/api/v1/investigations",
+            json={"ticker": "BHP", "trade_date": "2026-08-20", "mode": "RECORDED"},
+        ).json()
+        wait_for_report(client, accepted["case_id"])
+        replay = client.get(
+            f"/api/v1/investigations/{accepted['case_id']}/events",
+            headers={"Last-Event-ID": "2"},
+        )
+
+    event_ids = [
+        int(line.removeprefix("id: "))
+        for line in replay.text.splitlines()
+        if line.startswith("id: ")
+    ]
+    assert replay.status_code == 200
+    assert event_ids
+    assert min(event_ids) == 3

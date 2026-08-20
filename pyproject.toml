@@ -12,12 +12,10 @@ dependencies = [
   "fastapi>=0.115",
   "google-genai>=1.0",
   "httpx>=0.28",
-  "langgraph>=0.2",
   "pydantic>=2.10",
   "pydantic-settings>=2.7",
   "pymupdf>=1.25",
   "python-multipart>=0.0.20",
-  "sqlalchemy>=2.0",
   "uvicorn[standard]>=0.34",
 ]
 

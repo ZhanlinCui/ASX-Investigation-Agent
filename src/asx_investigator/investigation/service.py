@@ -32,6 +32,7 @@ from asx_investigator.domain.models import (
     InvestigationReport,
     InvestigationStatus,
     PrimaryAssessment,
+    ProviderCallDiagnostic,
     TradingSession,
     ValidationResult,
     ValidationStatus,
@@ -64,6 +65,7 @@ class InvestigationService:
         trade_date: str | date,
         mode: str = "LIVE",
         on_stage: StageObserver | None = None,
+        supplied_evidence: list[EvidenceItem] | None = None,
     ) -> InvestigationReport:
         normalized_ticker = ticker.upper().strip()
         requested_date = (
@@ -131,6 +133,7 @@ class InvestigationService:
 
         await self._stage(trace, on_stage, "discover_and_freeze_documents", "RUNNING")
         raw_evidence = await self.tools.get_evidence(normalized_ticker, requested_date)
+        raw_evidence.extend(supplied_evidence or [])
         evidence = self._eligible_evidence(raw_evidence, session)
         await self._stage(trace, on_stage, "discover_and_freeze_documents", "COMPLETED")
 
@@ -289,6 +292,31 @@ class InvestigationService:
         missing = [gap.capability for gap in coverage_gaps]
         missing_capabilities = missing
         completeness_score = 1.0 if not missing_capabilities and not market_data.conflicts else 0.5
+        provider_diagnostics = [
+            ProviderCallDiagnostic(
+                provider=item.provider,
+                operation="daily_bars",
+                status=str(item.status),
+                coverage=item.coverage,
+                retrieved_at=item.retrieved_at,
+                provenance=item.provenance,
+                error_code=item.error_code,
+                source_version=item.source_version,
+            )
+            for item in market_data.outcomes
+        ]
+        provider_diagnostics.append(
+            ProviderCallDiagnostic(
+                provider=corporate_actions.provider,
+                operation="corporate_actions",
+                status=str(corporate_actions.status),
+                coverage=corporate_actions.coverage,
+                retrieved_at=corporate_actions.retrieved_at,
+                provenance=corporate_actions.provenance,
+                error_code=corporate_actions.error_code,
+                source_version=corporate_actions.source_version,
+            )
+        )
         return InvestigationReport(
             case_id=str(uuid4()),
             run_id=str(uuid4()),
@@ -328,6 +356,7 @@ class InvestigationService:
                 if self.reasoner
                 else {"provider": "RECORDED_DETERMINISTIC", "structured_calls_max": "0"}
             ),
+            provider_diagnostics=provider_diagnostics,
             trace=trace,
         )
 

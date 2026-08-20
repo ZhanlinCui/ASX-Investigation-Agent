@@ -1,6 +1,7 @@
 # Phase 2: Evidence-Complete Live Investigation
 
-**Status:** In implementation  
+**Status:** Recorded release candidate; external Live gates open
+
 **Branch:** `phase2/evidence-complete-live`  
 **Model:** `gemini-3-flash-preview`, configurable through `GEMINI_MODEL`
 
@@ -109,11 +110,11 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 
 ### P2.7: Workbench and release
 
-- [ ] Add case archive, persisted running stages and retry controls.
-- [ ] Add hypotheses, evidence passage viewer, gaps, conflicts, caps, completeness and trace.
-- [ ] Add typed refinement and parent-child version comparison.
-- [ ] Keep JSON, Markdown and UI on the same report schema.
-- [ ] Add CI for Python tests/lint, frontend tests/build and recorded evaluation smoke.
+- [x] Add case archive, persisted running stages and retry controls.
+- [x] Add hypotheses, evidence passage viewer, gaps, conflicts, caps, completeness and trace.
+- [x] Add typed refinement and parent-child version comparison.
+- [x] Keep JSON, Markdown and UI on the same report schema.
+- [x] Add CI for Python tests/lint, frontend tests/build and recorded evaluation smoke.
 - [ ] Gate: clean checkout verification and credentialed live smoke pass, or the release remains recorded-only.
 
 ## Public API additions
@@ -125,7 +126,7 @@ Gemini receives a bounded evidence packet and returns structured hypotheses. It 
 - `POST /api/v1/sources/fetch`
 - `GET /api/v1/evidence/{evidence_id}/content`
 
-Existing create, get, events, JSON and Markdown behaviour remains available. SSE events have a monotonically increasing sequence and can replay from `after_sequence`.
+Existing create, get, events, JSON and Markdown behaviour remains available. SSE events have a monotonically increasing sequence and can replay from `after_sequence` or the standard `Last-Event-ID` header.
 
 ## Completion evidence
 

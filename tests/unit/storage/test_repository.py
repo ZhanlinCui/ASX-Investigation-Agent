@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -104,3 +104,29 @@ async def test_repository_creates_provider_and_evidence_indexes(
         tables = {row[0] for row in await cursor.fetchall()}
 
     assert {"provider_calls", "evidence_records"}.issubset(tables)
+
+
+async def test_provider_calls_are_append_only_audit_records(
+    repository: SQLiteCaseRepository,
+) -> None:
+    case = await repository.create_case(
+        ticker="BHP",
+        trade_date=date(2026, 8, 20),
+        mode="RECORDED",
+        request_payload={"ticker": "BHP"},
+    )
+
+    await repository.record_provider_call(
+        case.version_id,
+        provider="EODHD",
+        operation="daily_bars",
+        status="SUCCESS",
+        coverage="COMPLETE",
+        retrieved_at=datetime.now(UTC),
+        provenance={"symbol": "BHP.AU"},
+        source_version="eod-v1",
+    )
+    calls = await repository.list_provider_calls(case.version_id)
+
+    assert calls[0]["provider"] == "EODHD"
+    assert calls[0]["provenance"] == {"symbol": "BHP.AU"}

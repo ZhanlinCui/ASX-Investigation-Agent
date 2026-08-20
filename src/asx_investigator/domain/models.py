@@ -193,6 +193,18 @@ class TraceReference(BaseModel):
     last_sequence: int = Field(ge=0)
 
 
+class ProviderCallDiagnostic(BaseModel):
+    provider: str
+    operation: str
+    status: str
+    coverage: str
+    retrieved_at: datetime
+    provenance: dict[str, str] = Field(default_factory=dict)
+    error_code: str | None = None
+    source_version: str | None = None
+    artifact_id: str | None = None
+
+
 class InvestigationReport(BaseModel):
     case_id: str
     run_id: str
@@ -218,7 +230,9 @@ class InvestigationReport(BaseModel):
     conflicts: list[SourceConflict] = Field(default_factory=list)
     source_policy_version: str = "phase2-v1"
     model_configuration: dict[str, str] = Field(default_factory=dict)
+    provider_diagnostics: list[ProviderCallDiagnostic] = Field(default_factory=list)
     trace_reference: TraceReference | None = None
     parent_case_id: str | None = None
+    parent_version_id: str | None = None
     case_version: int = Field(default=1, ge=1)
     trace: list[dict[str, str]] = Field(default_factory=list)

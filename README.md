@@ -6,9 +6,9 @@ The product does not recommend trades or predict prices.
 
 ## Current release
 
-Phase 2 is in implementation. Recorded mode is available for deterministic development and evaluation. Live completion requires configured market-data and discovery providers.
+Phase 2 product implementation is complete in recorded mode. Live completion remains gated by provider credentials and independently adjudicated point-in-time evaluation data.
 
-Implemented foundations include ASX session handling, daily move calculations, evidence timing, citation validation, Gemini structured output, provisional confidence bands, an asynchronous API, JSON and Markdown reports, and an English research workbench.
+Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
 
 See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap and `docs/phase-plans/phase-02-evidence-complete-live-investigation.md` for the active implementation plan.
 
@@ -23,7 +23,7 @@ cp .env.example .env
 cd web && pnpm install
 ```
 
-Required for model synthesis:
+Required for Live model synthesis:
 
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`, default `gemini-3-flash-preview`
@@ -45,6 +45,8 @@ cd web && pnpm dev
 
 Open `http://localhost:5173`. The recorded BHP case uses ticker `BHP`, date `2026-08-20`, and mode `RECORDED`.
 
+The workbench can attach PDF, HTML or text sources up to 20 MB. URL ingestion is available through `POST /api/v1/sources/fetch`; private and reserved network targets are rejected.
+
 ## Verify
 
 ```bash
@@ -56,7 +58,8 @@ cd web && pnpm test && pnpm build
 
 ## Known limits
 
-- Confidence is an evidence-strength band and remains `UNCALIBRATED`.
-- Live announcement coverage depends on issuer sources and configured providers.
-- The initial recorded corpus is a regression fixture, not proof of broad causal accuracy.
-- The Phase 2 release gate remains open until durable storage, source snapshots, provider fallback and the expanded evaluation suite are complete.
+- Confidence is a rule-governed evidence-strength band, not a probability, and remains `UNCALIBRATED`.
+- Tavily results remain discovery-only; primary causal support requires frozen issuer or user-supplied official material.
+- The 24 development cases are synthetic policy sentinels, not historical accuracy evidence.
+- The 12-case sealed holdout is `NOT_RUN` unless `ASX_EVAL_HOLDOUT_ROOT` is supplied.
+- The credentialed Live smoke gate is `NOT_RUN` in an unconfigured checkout.

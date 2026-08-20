@@ -73,7 +73,7 @@
           {
             "name": "latency",
             "passed": true,
-            "detail": "observed_ms=1; max_ms=30000",
+            "detail": "observed_ms=2; max_ms=30000",
             "hard_gate": true
           },
           {
@@ -87,7 +87,7 @@
           "passed": 11,
           "failed": 0
         },
-        "latency_ms": 1,
+        "latency_ms": 2,
         "estimated_cost_aud": 0.0
       },
       {

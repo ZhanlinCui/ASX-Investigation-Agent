@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -7,6 +8,8 @@ from uuid import uuid4
 
 import aiosqlite
 from pydantic import BaseModel, Field
+
+from asx_investigator.domain.models import EvidenceItem, EvidenceRole
 
 
 class CaseVersionImmutableError(RuntimeError):
@@ -108,6 +111,25 @@ CREATE TABLE IF NOT EXISTS evidence_records (
     page INTEGER,
     PRIMARY KEY(version_id, evidence_id)
 );
+CREATE TABLE IF NOT EXISTS source_documents (
+    source_id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    published_at TEXT NOT NULL,
+    retrieved_at TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    authority TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS source_passages (
+    evidence_id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES source_documents(source_id),
+    passage TEXT NOT NULL,
+    locator TEXT NOT NULL,
+    page INTEGER,
+    passage_hash TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_case_versions_case ON case_versions(case_id, version_number);
 CREATE INDEX IF NOT EXISTS idx_run_events_version ON run_events(version_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_provider_calls_version ON provider_calls(version_id);
@@ -145,6 +167,185 @@ class SQLiteCaseRepository:
             row = await cursor.fetchone()
             assert row is not None
             return str(row[0]).lower()
+
+    async def create_source(
+        self,
+        *,
+        artifact_id: str,
+        source_url: str,
+        mime_type: str,
+        title: str,
+        published_at: datetime,
+        content_hash: str,
+        authority: str,
+        passages: list[dict[str, object]],
+    ) -> dict[str, object]:
+        source_id = str(uuid4())
+        retrieved_at = datetime.now(UTC)
+        async with aiosqlite.connect(self.database_path) as connection:
+            await connection.execute("PRAGMA foreign_keys=ON")
+            await connection.execute(
+                """INSERT INTO source_documents
+                (source_id, artifact_id, source_url, mime_type, title, published_at,
+                 retrieved_at, content_hash, authority)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    source_id,
+                    artifact_id,
+                    source_url,
+                    mime_type,
+                    title,
+                    published_at.isoformat(),
+                    retrieved_at.isoformat(),
+                    content_hash,
+                    authority,
+                ),
+            )
+            for index, passage in enumerate(passages, start=1):
+                text = str(passage["text"])
+                await connection.execute(
+                    """INSERT INTO source_passages
+                    (evidence_id, source_id, passage, locator, page, passage_hash)
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        f"{source_id}:P{index}",
+                        source_id,
+                        text,
+                        str(passage["locator"]),
+                        passage.get("page"),
+                        hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    ),
+                )
+            await connection.commit()
+        return {
+            "source_id": source_id,
+            "title": title,
+            "artifact_id": artifact_id,
+            "content_hash": content_hash,
+            "passage_count": len(passages),
+            "published_at": published_at.isoformat(),
+            "retrieved_at": retrieved_at.isoformat(),
+        }
+
+    async def get_source_evidence(self, source_ids: list[str]) -> list[EvidenceItem]:
+        if not source_ids:
+            return []
+        placeholders = ",".join("?" for _ in source_ids)
+        sql = f"""SELECT d.*, p.evidence_id, p.passage, p.locator, p.page, p.passage_hash
+            FROM source_documents d JOIN source_passages p ON p.source_id = d.source_id
+            WHERE d.source_id IN ({placeholders}) ORDER BY d.source_id, p.evidence_id"""
+        async with aiosqlite.connect(self.database_path) as connection:
+            connection.row_factory = aiosqlite.Row
+            rows = await (await connection.execute(sql, source_ids)).fetchall()
+        found = {str(row["source_id"]) for row in rows}
+        missing = set(source_ids) - found
+        if missing:
+            raise KeyError(sorted(missing)[0])
+        return [
+            EvidenceItem(
+                evidence_id=str(row["evidence_id"]),
+                source_name="User supplied source",
+                source_url=str(row["source_url"]),
+                published_at=datetime.fromisoformat(str(row["published_at"])),
+                retrieved_at=datetime.fromisoformat(str(row["retrieved_at"])),
+                role=EvidenceRole.CAUSAL_INPUT,
+                authority=str(row["authority"]),
+                title=str(row["title"]),
+                passage=str(row["passage"]),
+                content_hash=str(row["passage_hash"]),
+                locator=str(row["locator"]),
+                page=int(row["page"]) if row["page"] is not None else None,
+            )
+            for row in rows
+        ]
+
+    async def find_evidence_content(self, evidence_id: str) -> dict[str, object]:
+        async with aiosqlite.connect(self.database_path) as connection:
+            connection.row_factory = aiosqlite.Row
+            row = await (
+                await connection.execute(
+                    """SELECT passage, locator, page FROM source_passages
+                    WHERE evidence_id = ?""",
+                    (evidence_id,),
+                )
+            ).fetchone()
+            if row is None:
+                row = await (
+                    await connection.execute(
+                        """SELECT passage, locator, page FROM evidence_records
+                        WHERE evidence_id = ? ORDER BY retrieved_at DESC LIMIT 1""",
+                        (evidence_id,),
+                    )
+                ).fetchone()
+        if row is None:
+            raise KeyError(evidence_id)
+        return {
+            "evidence_id": evidence_id,
+            "passage": str(row["passage"]),
+            "locator": str(row["locator"]) if row["locator"] is not None else None,
+            "page": int(row["page"]) if row["page"] is not None else None,
+        }
+
+    async def record_provider_call(
+        self,
+        version_id: str,
+        *,
+        provider: str,
+        operation: str,
+        status: str,
+        coverage: str,
+        retrieved_at: datetime,
+        provenance: dict[str, str],
+        error_code: str | None = None,
+        source_version: str | None = None,
+        artifact_id: str | None = None,
+    ) -> None:
+        async with aiosqlite.connect(self.database_path) as connection:
+            await connection.execute("PRAGMA foreign_keys=ON")
+            await connection.execute(
+                """INSERT INTO provider_calls
+                (version_id, provider, operation, status, coverage, retrieved_at,
+                 provenance_json, error_code, source_version, artifact_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    version_id,
+                    provider,
+                    operation,
+                    status,
+                    coverage,
+                    retrieved_at.isoformat(),
+                    json.dumps(provenance, sort_keys=True),
+                    error_code,
+                    source_version,
+                    artifact_id,
+                ),
+            )
+            await connection.commit()
+
+    async def list_provider_calls(self, version_id: str) -> list[dict[str, object]]:
+        async with aiosqlite.connect(self.database_path) as connection:
+            connection.row_factory = aiosqlite.Row
+            rows = await (
+                await connection.execute(
+                    """SELECT * FROM provider_calls WHERE version_id = ?
+                    ORDER BY provider_call_id""",
+                    (version_id,),
+                )
+            ).fetchall()
+        return [
+            {
+                "provider": str(row["provider"]),
+                "operation": str(row["operation"]),
+                "status": str(row["status"]),
+                "coverage": str(row["coverage"]),
+                "retrieved_at": str(row["retrieved_at"]),
+                "provenance": json.loads(str(row["provenance_json"])),
+                "error_code": row["error_code"],
+                "source_version": row["source_version"],
+                "artifact_id": row["artifact_id"],
+            }
+            for row in rows
+        ]
 
     async def create_case(
         self,
@@ -232,6 +433,19 @@ class SQLiteCaseRepository:
         if row is None:
             raise KeyError(case_id)
         return await self.get_version(str(row[0]))
+
+    async def list_versions(self, case_id: str) -> list[CaseVersionRecord]:
+        async with aiosqlite.connect(self.database_path) as connection:
+            rows = await (
+                await connection.execute(
+                    """SELECT version_id FROM case_versions WHERE case_id = ?
+                    ORDER BY version_number DESC""",
+                    (case_id,),
+                )
+            ).fetchall()
+        if not rows:
+            raise KeyError(case_id)
+        return [await self.get_version(str(row[0])) for row in rows]
 
     async def list_cases(self) -> list[CaseVersionRecord]:
         async with aiosqlite.connect(self.database_path) as connection:

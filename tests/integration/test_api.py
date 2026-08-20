@@ -1,5 +1,7 @@
+from pathlib import Path
 from time import sleep
 
+import pytest
 from fastapi.testclient import TestClient
 
 from asx_investigator.api.app import create_app
@@ -58,3 +60,27 @@ def test_api_rejects_invalid_ticker() -> None:
         )
 
     assert response.status_code == 422
+
+
+def test_default_app_routes_recorded_mode_without_live_credentials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 'default.db'}"
+    )
+    app = create_app()
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/api/v1/investigations",
+            json={"ticker": "BHP", "trade_date": "2026-08-20", "mode": "RECORDED"},
+        ).json()
+        payload: dict[str, object] = {}
+        for _ in range(40):
+            payload = client.get(
+                f"/api/v1/investigations/{accepted['case_id']}"
+            ).json()
+            if payload["status"] == "COMPLETED":
+                break
+            sleep(0.01)
+
+    assert payload["outcome"] == "EXPLAINED"

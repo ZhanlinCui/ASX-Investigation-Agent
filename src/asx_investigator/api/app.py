@@ -6,11 +6,12 @@ import re
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, status
+import httpx
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
@@ -21,10 +22,19 @@ from asx_investigator.domain.models import (
     InvestigationStatus,
     TraceReference,
 )
+from asx_investigator.evidence.ingestion import (
+    MAX_SOURCE_BYTES,
+    SourceIngestor,
+    SourceRejected,
+)
+from asx_investigator.evidence.parsing import parse_source
+from asx_investigator.evidence.registry import SQLiteEvidenceRegistry
 from asx_investigator.investigation.service import InvestigationService
 from asx_investigator.providers.live import LiveToolGateway
+from asx_investigator.providers.recorded import RecordedToolGateway
 from asx_investigator.report.markdown import render_markdown
 from asx_investigator.settings import Settings
+from asx_investigator.storage.artifacts import ArtifactStore
 from asx_investigator.storage.repository import CaseVersionRecord, SQLiteCaseRepository
 
 
@@ -54,7 +64,7 @@ class InvestigationRequest(BaseModel):
 class RefinementRequest(BaseModel):
     primary_only: bool = False
     excluded_evidence_ids: list[str] = Field(default_factory=list)
-    source_ids: list[str] = Field(default_factory=list)
+    source_ids: list[str] | None = None
 
 
 class CaseAccepted(BaseModel):
@@ -65,12 +75,37 @@ class CaseAccepted(BaseModel):
     status: str = "QUEUED"
 
 
+class SourceFetchRequest(BaseModel):
+    url: str
+    title: str = Field(min_length=1, max_length=240)
+    published_at: datetime
+    is_official: bool = False
+
+
+class SourceAccepted(BaseModel):
+    source_id: str
+    title: str
+    artifact_id: str
+    content_hash: str
+    passage_count: int
+    published_at: datetime
+    retrieved_at: datetime
+
+
 class CaseManager:
     """Durable case runner with append-only public events."""
 
-    def __init__(self, service: InvestigationService, repository: SQLiteCaseRepository) -> None:
+    def __init__(
+        self,
+        service: InvestigationService,
+        repository: SQLiteCaseRepository,
+        evidence_registry: SQLiteEvidenceRegistry,
+        recorded_service: InvestigationService | None = None,
+    ) -> None:
         self.service = service
+        self.recorded_service = recorded_service or service
         self.repository = repository
+        self.evidence_registry = evidence_registry
         self.tasks: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
@@ -105,7 +140,7 @@ class CaseManager:
     ) -> CaseVersionRecord:
         parent = await self.repository.get_case(case_id)
         payload = dict(parent.request_payload)
-        payload.update(refinement.model_dump(mode="json"))
+        payload.update(refinement.model_dump(mode="json", exclude_none=True))
         request = InvestigationRequest.model_validate(payload)
         child = await self.repository.create_version(
             case_id,
@@ -178,17 +213,30 @@ class CaseManager:
                     payload,
                 )
 
-            report = await self.service.investigate(
+            supplied_evidence = await self.repository.get_source_evidence(request.source_ids)
+            active_service = (
+                self.recorded_service if request.mode == "RECORDED" else self.service
+            )
+            report = await active_service.investigate(
                 request.ticker,
                 request.trade_date,
                 mode=request.mode,
                 on_stage=persist_stage,
+                supplied_evidence=supplied_evidence,
             )
             report.case_id = record.case_id
             report.run_id = record.version_id
             report.status = InvestigationStatus.COMPLETED
             report.parent_case_id = record.parent_version_id
+            report.parent_version_id = record.parent_version_id
             report.case_version = record.version_number
+            for diagnostic in report.provider_diagnostics:
+                await self.repository.record_provider_call(
+                    record.version_id,
+                    **diagnostic.model_dump(),
+                )
+            for item in report.evidence:
+                await self.evidence_registry.register(record.version_id, item)
             await self.repository.update_status(
                 record.version_id, "RUNNING", active_stage="persist_and_publish"
             )
@@ -253,10 +301,12 @@ def create_app(
 ) -> FastAPI:
     settings = Settings()
     injected_service = service is not None
+    recorded_service = service
     if service is None:
         service = InvestigationService(
             LiveToolGateway(settings), reasoner=GeminiInvestigationReasoner(settings)
         )
+        recorded_service = InvestigationService(RecordedToolGateway.default())
     if repository is None:
         path = (
             Path(tempfile.mkdtemp(prefix="asx-investigator-test-")) / "cases.db"
@@ -264,13 +314,29 @@ def create_app(
             else _database_path(settings)
         )
         repository = SQLiteCaseRepository(path)
-    manager = CaseManager(service, repository)
+    evidence_registry = SQLiteEvidenceRegistry(repository.database_path)
+    artifact_root = (
+        repository.database_path.parent / "artifacts"
+        if injected_service
+        else settings.artifact_dir
+    )
+    source_client = httpx.AsyncClient(timeout=20)
+    source_ingestor = SourceIngestor(ArtifactStore(artifact_root), source_client)
+    manager = CaseManager(
+        service,
+        repository,
+        evidence_registry,
+        recorded_service=recorded_service,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        await repository.initialize()
+        await evidence_registry.initialize()
         await manager.start()
         yield
         await manager.stop()
+        await source_client.aclose()
 
     app = FastAPI(title="ASX Investigation Agent", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
@@ -297,6 +363,14 @@ def create_app(
     @app.get("/api/v1/investigations")
     async def list_investigations() -> dict[str, object]:
         records = await repository.list_cases()
+        return {"items": [record.model_dump(mode="json") for record in records]}
+
+    @app.get("/api/v1/investigations/{case_id}/versions")
+    async def list_versions(case_id: str) -> dict[str, object]:
+        try:
+            records = await repository.list_versions(case_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Investigation not found") from error
         return {"items": [record.model_dump(mode="json") for record in records]}
 
     @app.post(
@@ -348,14 +422,27 @@ def create_app(
         }
 
     @app.get("/api/v1/investigations/{case_id}/events")
-    async def stream_events(case_id: str, after_sequence: int = 0) -> StreamingResponse:
+    async def stream_events(
+        case_id: str,
+        after_sequence: int = 0,
+        last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    ) -> StreamingResponse:
         try:
             await repository.get_case(case_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Investigation not found") from error
 
+        replay_after = after_sequence
+        if last_event_id is not None:
+            try:
+                replay_after = max(replay_after, int(last_event_id))
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=400, detail="Last-Event-ID must be an integer"
+                ) from error
+
         async def encode_events() -> AsyncIterator[str]:
-            async for event in manager.events(case_id, after_sequence):
+            async for event in manager.events(case_id, replay_after):
                 yield (
                     f"id: {event['sequence']}\n"
                     f"event: {event['event_type']}\n"
@@ -363,6 +450,84 @@ def create_app(
                 )
 
         return StreamingResponse(encode_events(), media_type="text/event-stream")
+
+    async def persist_source(
+        *,
+        frozen,
+        title: str,
+        published_at: datetime,
+        is_official: bool,
+        source_url: str,
+    ) -> SourceAccepted:
+        if published_at.tzinfo is None:
+            raise HTTPException(status_code=422, detail="published_at must include a timezone")
+        passages = parse_source(
+            source_ingestor.artifacts.get(frozen.artifact_id), frozen.mime_type
+        )
+        if not passages:
+            raise HTTPException(status_code=422, detail="No readable passages were found")
+        record = await repository.create_source(
+            artifact_id=frozen.artifact_id,
+            source_url=source_url,
+            mime_type=frozen.mime_type,
+            title=title,
+            published_at=published_at,
+            content_hash=frozen.sha256,
+            authority="USER_SUPPLIED_OFFICIAL" if is_official else "USER_SUPPLIED",
+            passages=[item.model_dump() for item in passages],
+        )
+        return SourceAccepted.model_validate(record)
+
+    @app.post(
+        "/api/v1/sources/upload",
+        response_model=SourceAccepted,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def upload_source(
+        file: UploadFile = File(...),
+        title: str = Form(...),
+        published_at: datetime = Form(...),
+        is_official: bool = Form(False),
+    ) -> SourceAccepted:
+        content = await file.read(MAX_SOURCE_BYTES + 1)
+        try:
+            frozen = source_ingestor.upload(
+                content, file.content_type or "application/octet-stream"
+            )
+        except SourceRejected as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return await persist_source(
+            frozen=frozen,
+            title=title,
+            published_at=published_at,
+            is_official=is_official,
+            source_url=f"upload://{file.filename or 'source'}",
+        )
+
+    @app.post(
+        "/api/v1/sources/fetch",
+        response_model=SourceAccepted,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def fetch_source(request: SourceFetchRequest) -> SourceAccepted:
+        try:
+            frozen = await source_ingestor.fetch(request.url)
+        except (SourceRejected, httpx.HTTPError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return await persist_source(
+            frozen=frozen,
+            title=request.title,
+            published_at=request.published_at,
+            is_official=request.is_official,
+            source_url=frozen.source_url or request.url,
+        )
+
+    @app.get("/api/v1/evidence/{evidence_id}/content")
+    async def evidence_content(evidence_id: str) -> dict[str, object]:
+        try:
+            return await repository.find_evidence_content(evidence_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Evidence not found") from error
 
     return app
 
