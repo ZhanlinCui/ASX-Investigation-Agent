@@ -46,6 +46,7 @@ from asx_investigator.providers.capture import canonical_json_bytes
 from asx_investigator.providers.live import LiveToolGateway
 from asx_investigator.providers.recorded import RecordedToolGateway
 from asx_investigator.report.markdown import render_markdown
+from asx_investigator.report.public import public_report_payload
 from asx_investigator.settings import Settings
 from asx_investigator.storage.artifacts import ArtifactStore
 from asx_investigator.storage.memory import SharedMemoryRepository
@@ -117,93 +118,49 @@ class SourceAccepted(BaseModel):
     retrieved_at: datetime
 
 
-def public_report_payload(report: InvestigationReport) -> dict[str, object]:
-    """Return the stable public report view without expanding audit exposure.
+def public_case_summary(record: CaseVersionRecord) -> dict[str, object]:
+    """Return archive/version metadata without raw request or report storage."""
 
-    The persisted report is the internal validated record. Phase 3 adds a
-    narrower public projection for its assertion, mechanism, ledger and
-    calibration fields so a future internal field cannot accidentally expose
-    provider payloads, model traces, private memory or calibration
-    probabilities through the case endpoint.
-    """
-
-    payload: dict[str, object] = report.model_dump(mode="json")
-    payload["assertions"] = [
-        item.model_dump(
-            mode="json",
-            include={
-                "assertion_id",
-                "evidence_id",
-                "exact_text",
-                "span_hash",
-                "artifact_hash",
-                "published_at",
-                "retrieved_at",
-                "source_authority",
-                "locator",
-                "role",
-                "causal_eligible",
-                "mechanism_hint",
-                "normalized_entities",
-                "normalized_values",
-                "contradicting_assertion_ids",
-            },
-        )
-        for item in report.assertions
-    ]
-    payload["mechanism_tests"] = [
-        item.model_dump(
-            mode="json",
-            include={
-                "test_id",
-                "mechanism",
-                "status",
-                "summary",
-                "taxonomy_version",
-                "policy_version",
-                "created_at",
-                "supporting_assertion_ids",
-                "contradicting_assertion_ids",
-            },
-        )
-        for item in report.mechanism_tests
-    ]
-    payload["ledger"] = [
-        item.model_dump(
-            mode="json",
-            include={
-                "sequence",
-                "stage",
-                "status",
-                "input_hashes",
-                "output_hashes",
-                "schema_version",
-                "policy_version",
-                "validation_status",
-                "created_at",
-            },
-        )
-        for item in report.ledger
-    ]
-    calibration = report.calibration_metadata
-    payload["calibration_metadata"] = {
-        **calibration.model_dump(mode="json", exclude={"bands"}),
-        "bands": {
-            band: sample.model_dump(
-                mode="json",
-                include={
-                    "eligible_cases",
-                    "correct_cases",
-                    "acceptable_alternative_cases",
-                    "abstained_cases",
-                    "material_errors",
-                    "status",
-                },
-            )
-            for band, sample in calibration.bands.items()
-        },
+    payload: dict[str, object] = {
+        "case_id": record.case_id,
+        "version_id": record.version_id,
+        "version_number": record.version_number,
+        "parent_version_id": record.parent_version_id,
+        "ticker": record.ticker,
+        "trade_date": record.trade_date.isoformat(),
+        "mode": record.mode,
+        "status": record.status,
+        "outcome": record.outcome,
+        "active_stage": record.active_stage,
     }
+    if record.report_payload is None:
+        return payload
+    try:
+        public_report = public_report_payload(
+            InvestigationReport.model_validate(record.report_payload)
+        )
+    except ValidationError:
+        return payload
+    payload.update(
+        {
+            "confidence_band": public_report["confidence"]["band"],
+            "evidence_count": len(public_report["evidence"]),
+            "completeness_status": public_report["completeness"]["status"],
+        }
+    )
     return payload
+
+
+def public_event_payload(event: object) -> dict[str, object]:
+    """Project append-only events without publishing private event payloads."""
+
+    return {
+        "sequence": getattr(event, "sequence"),
+        "event_type": getattr(event, "event_type"),
+        "stage": getattr(event, "stage"),
+        "status": getattr(event, "status"),
+        "created_at": getattr(event, "created_at").isoformat(),
+    }
 
 
 class CaseManager:
@@ -629,7 +586,7 @@ class CaseManager:
             events = await self.repository.list_events(record.version_id, sequence)
             for event in events:
                 sequence = event.sequence
-                yield event.model_dump(mode="json")
+                yield public_event_payload(event)
             record = await self.repository.get_version(record.version_id)
             if record.status in {"COMPLETED", "FAILED", "FAILED_RECOVERABLE"} and not events:
                 break
@@ -721,7 +678,7 @@ def create_app(
     @app.get("/api/v1/investigations")
     async def list_investigations() -> dict[str, object]:
         records = await repository.list_cases()
-        return {"items": [record.model_dump(mode="json") for record in records]}
+        return {"items": [public_case_summary(record) for record in records]}
 
     @app.get("/api/v1/investigations/{case_id}/versions")
     async def list_versions(case_id: str) -> dict[str, object]:
@@ -729,7 +686,7 @@ def create_app(
             records = await repository.list_versions(case_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Investigation not found") from error
-        return {"items": [record.model_dump(mode="json") for record in records]}
+        return {"items": [public_case_summary(record) for record in records]}
 
     @app.post(
         "/api/v1/investigations/{case_id}/versions",
@@ -770,14 +727,7 @@ def create_app(
             if format == "markdown":
                 return Response(render_markdown(report), media_type="text/markdown")
             return public_report_payload(report)
-        return {
-            "case_id": record.case_id,
-            "version_id": record.version_id,
-            "version_number": record.version_number,
-            "status": record.status,
-            "active_stage": record.active_stage,
-            "error": record.error,
-        }
+        return public_case_summary(record)
 
     @app.get("/api/v1/investigations/{case_id}/events")
     async def stream_events(
@@ -882,7 +832,7 @@ def create_app(
 
     @app.get("/api/v1/evidence/{evidence_id}/content")
     async def evidence_content(
-        evidence_id: str, version_id: str | None = None
+        evidence_id: str, version_id: str
     ) -> dict[str, object]:
         try:
             return await repository.find_evidence_content(

@@ -94,12 +94,24 @@ def test_refinement_inherits_attached_sources_unless_explicitly_replaced() -> No
             f"/api/v1/investigations/{accepted['case_id']}/versions",
             json={"primary_only": True},
         )
+        child_report: dict[str, object] = {}
+        for _ in range(40):
+            child_report = client.get(
+                f"/api/v1/investigations/{accepted['case_id']}"
+            ).json()
+            if child_report.get("run_id") == refined.json()["version_id"] and child_report[
+                "status"
+            ] not in {"QUEUED", "RUNNING"}:
+                break
+            sleep(0.01)
         versions = client.get(
             f"/api/v1/investigations/{accepted['case_id']}/versions"
         ).json()["items"]
 
     assert refined.status_code == 202
-    assert versions[-1]["request_payload"]["source_ids"] == [source["source_id"]]
+    assert child_report["status"] == "COMPLETED"
+    assert any(item["title"] == source["title"] for item in child_report["evidence"])
+    assert all("request_payload" not in item for item in versions)
 
 
 def test_unknown_source_is_a_permanent_case_failure() -> None:
