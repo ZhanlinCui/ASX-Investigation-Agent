@@ -206,7 +206,11 @@ async def run_external_gold(
             reason=f"{_ENVIRONMENT_ROOTS[corpus]} was not provided.",
         )
     try:
-        frozen = load_frozen_gold_corpus(root, kind=corpus)
+        frozen = load_frozen_gold_corpus(
+            root,
+            kind=corpus,
+            enforce_release_case_count=True,
+        )
     except FrozenBundleError as error:
         return GoldExecutionReport(corpus=corpus, status="FAIL", errors=[str(error)])
     return await execute_gold_corpus(frozen, reasoner=reasoner)

@@ -112,6 +112,25 @@ def test_blind_holdout_rejects_an_expected_outcome_label(tmp_path: Path) -> None
         load_frozen_gold_corpus(tmp_path, kind="holdout")
 
 
+def test_blind_holdout_rejects_a_nested_report_or_label_field(tmp_path: Path) -> None:
+    write_bundle(tmp_path / "gold-01")
+    bundle_path = tmp_path / "gold-01" / "bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["evidence"]["documents"][0]["metadata"]["report"] = {
+        "driver_labels": ["ISSUER_DISCLOSURE"]
+    }
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    payload = {
+        "schema_version": "gold-frozen-v1",
+        "corpus_version": "sealed-test-v1",
+        "cases": [{"case_id": "gold-01", "bundle_path": "gold-01"}],
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(FrozenBundleError, match="report|sealed labels"):
+        load_frozen_gold_corpus(tmp_path, kind="holdout")
+
+
 def test_gold_cli_executes_external_frozen_development_corpus(tmp_path: Path) -> None:
     artifacts = write_bundle(tmp_path / "gold-01")
     _write_development_manifest(tmp_path, artifact_ids=list(artifacts.values()))
@@ -129,6 +148,7 @@ def test_gold_cli_executes_external_frozen_development_corpus(tmp_path: Path) ->
     )
 
     payload = json.loads(completed.stdout)
-    assert completed.returncode == 0
-    assert payload["development"]["status"] == "PASS"
+    assert completed.returncode == 1
+    assert payload["development"]["status"] == "FAIL"
+    assert "exactly 24" in payload["development"]["errors"][0]
     assert payload["holdout"]["status"] == "NOT_RUN"

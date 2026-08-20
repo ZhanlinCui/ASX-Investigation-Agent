@@ -13,6 +13,7 @@ from asx_investigator.evaluation.bundles import (
     FrozenCaseGateway,
     load_frozen_case_bundle,
 )
+from asx_investigator.market.sessions import resolve_session
 
 SYDNEY = ZoneInfo("Australia/Sydney")
 
@@ -22,6 +23,19 @@ def _write_artifact(root: Path, content: bytes) -> str:
     artifacts = root / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
     (artifacts / artifact_id).write_bytes(content)
+    return artifact_id
+
+
+def _bind_metadata_artifact(root: Path, bundle: dict[str, object]) -> str:
+    """Bind every execution-relevant declaration to immutable metadata bytes."""
+
+    metadata = {
+        key: value for key, value in bundle.items() if key != "metadata_artifact_id"
+    }
+    artifact_id = _write_artifact(
+        root, json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
+    )
+    bundle["metadata_artifact_id"] = artifact_id
     return artifact_id
 
 
@@ -41,10 +55,16 @@ def write_bundle(
         target_date.year, target_date.month, target_date.day, 8, 30, tzinfo=SYDNEY
     )
     cutoff = datetime(target_date.year, target_date.month, target_date.day, 16, 10, tzinfo=SYDNEY)
-    start = target_date - timedelta(days=60)
+    sessions: list[date] = []
+    cursor = target_date - timedelta(days=1)
+    while len(sessions) < 60:
+        if resolve_session(cursor).is_trading_day:
+            sessions.append(cursor)
+        cursor -= timedelta(days=1)
+    sessions.reverse()
     bars = [
         {
-            "trade_date": (start + timedelta(days=index)).isoformat(),
+            "trade_date": session.isoformat(),
             "open": 10.0,
             "high": 10.2,
             "low": 9.9,
@@ -52,7 +72,7 @@ def write_bundle(
             "adjusted_close": 10.0,
             "volume": 100_000,
         }
-        for index in range(60)
+        for session in sessions
     ]
     bars.append(
         {
@@ -87,6 +107,7 @@ def write_bundle(
         "timezone": cutoff_timezone,
         "evidence_cutoff": cutoff.isoformat(),
         "provider_schema_version": "provider-outcome-v1",
+        "policy_schema_version": "phase3-gold-evaluation-v1",
         "instrument": {
             "asx_code": ticker,
             "company_name": "BHP Group Limited",
@@ -138,11 +159,13 @@ def write_bundle(
             ],
         },
     }
+    metadata_artifact = _bind_metadata_artifact(root, bundle)
     (root / "bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
     return {
         "market": market_artifact,
         "corporate_actions": actions_artifact,
         "document": declared_document_artifact,
+        "metadata": metadata_artifact,
     }
 
 
@@ -205,10 +228,12 @@ def test_bundle_rejects_provider_contract_or_report_bypass(
     payload = json.loads(bundle_path.read_text(encoding="utf-8"))
     if mutation == "provider_schema":
         payload["provider_schema_version"] = "unknown-v1"
+        _bind_metadata_artifact(root, payload)
     elif mutation == "prebuilt_report":
         payload["report"] = {"outcome": "EXPLAINED"}
     else:
         payload["market"]["outcome"]["provenance"]["artifact_id"] = "0" * 64
+        _bind_metadata_artifact(root, payload)
     bundle_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(FrozenBundleError, match=message):
@@ -220,6 +245,83 @@ def test_bundle_rejects_non_trading_asx_session(tmp_path: Path) -> None:
 
     with pytest.raises(FrozenBundleError, match="ASX trading session"):
         load_frozen_case_bundle(tmp_path / "gold-01")
+
+
+def test_bundle_rejects_failed_market_outcome_even_when_its_artifact_has_bars(
+    tmp_path: Path,
+) -> None:
+    """A failed provider must not carry usable bars into market calculation."""
+
+    root = tmp_path / "gold-01"
+    write_bundle(root)
+    bundle_path = root / "bundle.json"
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    payload["market"]["outcome"]["status"] = "RETRYABLE_FAILURE"
+    _bind_metadata_artifact(root, payload)
+    bundle_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(FrozenBundleError, match="market.*failure"):
+        load_frozen_case_bundle(root)
+
+
+def test_bundle_preserves_partial_market_outcome_as_a_coverage_gap(tmp_path: Path) -> None:
+    root = tmp_path / "gold-01"
+    write_bundle(root)
+    bundle_path = root / "bundle.json"
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    payload["market"]["outcome"]["status"] = "PARTIAL"
+    payload["market"]["outcome"]["coverage"] = "PARTIAL_HISTORY"
+    _bind_metadata_artifact(root, payload)
+    bundle_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    market = load_frozen_case_bundle(root).market_result()
+
+    assert market.coverage_gap is not None
+    assert market.coverage_gap.capability == "market_data"
+
+
+def test_bundle_rejects_a_non_session_market_bar(tmp_path: Path) -> None:
+    root = tmp_path / "gold-01"
+    artifacts = write_bundle(root)
+    bundle_path = root / "bundle.json"
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    market_path = root / "artifacts" / artifacts["market"]
+    bars = json.loads(market_path.read_text(encoding="utf-8"))
+    assert all(
+        resolve_session(date.fromisoformat(item["trade_date"])).is_trading_day
+        for item in bars
+    )
+    friday_index = next(
+        index
+        for index, item in enumerate(bars[:-1])
+        if date.fromisoformat(item["trade_date"]).weekday() == 4
+    )
+    bars[friday_index]["trade_date"] = (
+        date.fromisoformat(bars[friday_index]["trade_date"]) + timedelta(days=1)
+    ).isoformat()  # Saturday, positioned between Friday and Monday.
+    replacement = _write_artifact(
+        root, json.dumps(bars, sort_keys=True, separators=(",", ":")).encode()
+    )
+    payload["market"]["artifact_id"] = replacement
+    payload["market"]["outcome"]["provenance"]["artifact_id"] = replacement
+    _bind_metadata_artifact(root, payload)
+    bundle_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(FrozenBundleError, match="market artifact.*ASX trading session"):
+        load_frozen_case_bundle(root)
+
+
+def test_bundle_rejects_mutable_provider_metadata_and_benchmark_return(tmp_path: Path) -> None:
+    root = tmp_path / "gold-01"
+    write_bundle(root)
+    bundle_path = root / "bundle.json"
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    payload["market"]["benchmark_return"] = 99.0
+    payload["market"]["outcome"]["provider"] = "MUTATED_PROVIDER"
+    bundle_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(FrozenBundleError, match="metadata artifact"):
+        load_frozen_case_bundle(root)
 
 
 @pytest.mark.parametrize(

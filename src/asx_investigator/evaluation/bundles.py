@@ -21,12 +21,17 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from asx_investigator.domain.models import EvidenceItem, EvidenceRole, InstrumentIdentity
+from asx_investigator.domain.models import (
+    CoverageGap,
+    EvidenceItem,
+    EvidenceRole,
+    InstrumentIdentity,
+)
 from asx_investigator.evaluation.models import GoldCaseManifest
 from asx_investigator.market.forensics import DailyBar
 from asx_investigator.market.sessions import classify_event, resolve_session
 from asx_investigator.providers.market import CorporateAction, MarketDataResult
-from asx_investigator.providers.outcomes import ProviderOutcome
+from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
 from asx_investigator.storage.artifacts import ArtifactReference
 
 SYDNEY = ZoneInfo("Australia/Sydney")
@@ -34,7 +39,28 @@ _SHA256_HEX = set("0123456789abcdef")
 _BUNDLE_VERSION = "frozen-case-v1"
 _CORPUS_VERSION = "gold-frozen-v1"
 _PROVIDER_SCHEMA_VERSION = "provider-outcome-v1"
+_POLICY_SCHEMA_VERSION = "phase3-gold-evaluation-v1"
 _HOLDOUT_CASE_FIELDS = {"case_id", "bundle_path"}
+_HOLDOUT_FORBIDDEN_KEYS = {
+    "report",
+    "reports",
+    "prebuilt_report",
+    "evaluation",
+    "grade",
+    "grader",
+    "label",
+    "labels",
+    "gold_label",
+    "driver_labels",
+    "expected_outcome",
+    "acceptable_alternatives",
+    "citation_requirements",
+    "future_evidence_ids",
+    "eligible_evidence_ids",
+    "mechanical_expectation",
+    "coverage_expectation",
+    "abstention_allowed",
+}
 
 
 class FrozenBundleError(ValueError):
@@ -95,6 +121,67 @@ def _parse_json(content: bytes, label: str) -> object:
         raise FrozenBundleError(f"{label} must contain UTF-8 JSON") from error
 
 
+def _read_verified_artifact_bytes(root: Path, artifact_id: str) -> bytes:
+    if not _is_sha256(artifact_id):
+        raise FrozenBundleError("artifact IDs must be lowercase SHA-256 hashes")
+    path = root / "artifacts" / artifact_id
+    if not path.is_file():
+        raise FrozenBundleError(f"required artifact is missing: {artifact_id}")
+    content = path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != artifact_id:
+        raise FrozenBundleError(f"artifact hash does not match declaration: {artifact_id}")
+    return content
+
+
+def _reject_holdout_labels_or_reports(value: object, *, label: str) -> None:
+    """Reject grading material before a sealed case reaches the product path.
+
+    This intentionally examines declaration keys, not source-document bytes: an
+    issuer's legitimate annual report may be source evidence, whereas a JSON
+    report or label field would be execution-time label leakage.
+    """
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            normalized = str(key).strip().lower().replace("-", "_").replace(" ", "_")
+            if normalized in _HOLDOUT_FORBIDDEN_KEYS:
+                raise FrozenBundleError(
+                    f"sealed labels or reports are not allowed ({label}.{key})"
+                )
+            _reject_holdout_labels_or_reports(item, label=f"{label}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_holdout_labels_or_reports(item, label=f"{label}[{index}]")
+
+
+def _bound_metadata(
+    root: Path,
+    outer: Mapping[str, Any],
+    *,
+    sealed_holdout: bool,
+) -> tuple[Mapping[str, Any], str]:
+    """Return the content-addressed declaration that governs a frozen bundle."""
+
+    if sealed_holdout:
+        _reject_holdout_labels_or_reports(outer, label="bundle")
+    artifact_id = _string(outer.get("metadata_artifact_id"), "metadata_artifact_id")
+    metadata = _mapping(
+        _parse_json(
+            _read_verified_artifact_bytes(root, artifact_id),
+            "metadata artifact",
+        ),
+        "metadata artifact",
+    )
+    if sealed_holdout:
+        _reject_holdout_labels_or_reports(metadata, label="metadata artifact")
+    declared = {key: value for key, value in outer.items() if key != "metadata_artifact_id"}
+    if metadata != declared:
+        raise FrozenBundleError(
+            "metadata artifact does not bind all evaluation-changing metadata"
+        )
+    return metadata, artifact_id
+
+
 def _freeze(value: object) -> object:
     """Freeze bundle metadata so a loaded fixture cannot be edited in memory."""
 
@@ -137,6 +224,7 @@ class FrozenCaseBundle:
     ticker: str
     trade_date: date
     evidence_cutoff: datetime
+    metadata_artifact_id: str
     instrument_data: Mapping[str, Any]
     market: Mapping[str, Any]
     corporate_actions: Mapping[str, Any]
@@ -156,6 +244,7 @@ class FrozenCaseBundle:
     @property
     def artifact_ids(self) -> list[str]:
         return [
+            self.metadata_artifact_id,
             _string(self.market.get("artifact_id"), "market.artifact_id"),
             _string(
                 self.corporate_actions.get("artifact_id"),
@@ -169,15 +258,11 @@ class FrozenCaseBundle:
             raise LookupError("Frozen case bundle does not cover this request")
 
     def _read_artifact(self, artifact_id: str, mime_type: str) -> _ArtifactFile:
-        if not _is_sha256(artifact_id):
-            raise FrozenBundleError("artifact IDs must be lowercase SHA-256 hashes")
-        path = self.root / "artifacts" / artifact_id
-        if not path.is_file():
-            raise FrozenBundleError(f"required artifact is missing: {artifact_id}")
-        content = path.read_bytes()
-        if hashlib.sha256(content).hexdigest() != artifact_id:
-            raise FrozenBundleError(f"artifact hash does not match declaration: {artifact_id}")
-        return _ArtifactFile(artifact_id=artifact_id, content=content, mime_type=mime_type)
+        return _ArtifactFile(
+            artifact_id=artifact_id,
+            content=_read_verified_artifact_bytes(self.root, artifact_id),
+            mime_type=mime_type,
+        )
 
     def _provider_outcome(
         self,
@@ -224,6 +309,8 @@ class FrozenCaseBundle:
         bars = [_daily_bar(item, "market artifact") for item in raw_bars]
         if len(bars) < 2 or bars[-1].trade_date != self.trade_date:
             raise FrozenBundleError("market artifact must end at the requested ASX session")
+        if any(not resolve_session(item.trade_date).is_trading_day for item in bars):
+            raise FrozenBundleError("market artifact must contain only ASX trading session bars")
         if any(item.trade_date > self.trade_date for item in bars) or any(
             right.trade_date <= left.trade_date for left, right in zip(bars, bars[1:])
         ):
@@ -231,12 +318,30 @@ class FrozenCaseBundle:
                 "market artifact bars must be ordered, unique and point-in-time"
             )
         outcome = self._provider_outcome(self.market, artifact, bars, label="market")
+        if outcome.status not in {ProviderStatus.SUCCESS, ProviderStatus.PARTIAL}:
+            raise FrozenBundleError("market provider failure cannot expose frozen market data")
+        coverage_gap = (
+            CoverageGap(
+                gap_id="FROZEN_MARKET_PARTIAL",
+                capability="market_data",
+                provider=outcome.provider,
+                reason=outcome.error_code or outcome.coverage,
+                impact=(
+                    "Frozen market history is partial; the investigation must not treat it as "
+                    "complete."
+                ),
+                retryable=False,
+            )
+            if outcome.status == ProviderStatus.PARTIAL
+            else None
+        )
         return MarketDataResult(
             bars=bars,
             selected_provider=_string(
                 self.market.get("selected_provider"), "market.selected_provider"
             ),
             outcomes=[outcome],
+            coverage_gap=coverage_gap,
         )
 
     def corporate_action_outcome(self) -> ProviderOutcome[list[CorporateAction]]:
@@ -376,19 +481,30 @@ class FrozenGoldCorpus:
     manifests: dict[str, GoldCaseManifest]
 
 
-def load_frozen_case_bundle(root: Path) -> FrozenCaseBundle:
+def load_frozen_case_bundle(
+    root: Path,
+    *,
+    sealed_holdout: bool = False,
+) -> FrozenCaseBundle:
     """Load and exhaustively validate one bundle before exposing any provider data."""
 
     path = root / "bundle.json"
     if not path.is_file():
         raise FrozenBundleError(f"bundle is missing: {path}")
-    raw = _mapping(_parse_json(path.read_bytes(), "bundle"), "bundle")
-    if "report" in raw or "prebuilt_report" in raw:
+    outer = _mapping(_parse_json(path.read_bytes(), "bundle"), "bundle")
+    if "report" in outer or "prebuilt_report" in outer:
         raise FrozenBundleError("prebuilt reports are not valid frozen execution inputs")
+    raw, metadata_artifact_id = _bound_metadata(
+        root,
+        outer,
+        sealed_holdout=sealed_holdout,
+    )
     if raw.get("bundle_version") != _BUNDLE_VERSION:
         raise FrozenBundleError(f"bundle_version must be {_BUNDLE_VERSION}")
     if raw.get("provider_schema_version") != _PROVIDER_SCHEMA_VERSION:
         raise FrozenBundleError("provider schema version is not supported")
+    if raw.get("policy_schema_version") != _POLICY_SCHEMA_VERSION:
+        raise FrozenBundleError("policy schema version is not supported")
     ticker = _string(raw.get("ticker"), "ticker").upper().strip()
     trade_date = _date(raw.get("trade_date"), "trade_date")
     session = resolve_session(trade_date)
@@ -452,6 +568,7 @@ def load_frozen_case_bundle(root: Path) -> FrozenCaseBundle:
         ticker=ticker,
         trade_date=trade_date,
         evidence_cutoff=evidence_cutoff,
+        metadata_artifact_id=metadata_artifact_id,
         instrument_data=cast(Mapping[str, Any], _freeze(instrument.model_dump(mode="json"))),
         market=cast(Mapping[str, Any], _freeze(market)),
         corporate_actions=cast(Mapping[str, Any], _freeze(corporate_actions)),
@@ -467,7 +584,10 @@ def load_frozen_case_bundle(root: Path) -> FrozenCaseBundle:
 
 
 def load_frozen_gold_corpus(
-    root: Path, *, kind: Literal["development", "holdout"]
+    root: Path,
+    *,
+    kind: Literal["development", "holdout"],
+    enforce_release_case_count: bool = False,
 ) -> FrozenGoldCorpus:
     """Load an external corpus without admitting holdout labels to execution."""
 
@@ -475,12 +595,19 @@ def load_frozen_gold_corpus(
     if not manifest_path.is_file():
         raise FrozenBundleError(f"gold manifest is missing: {manifest_path}")
     payload = _mapping(_parse_json(manifest_path.read_bytes(), "gold manifest"), "gold manifest")
+    if kind == "holdout":
+        _reject_holdout_labels_or_reports(payload, label="holdout manifest")
     if payload.get("schema_version") != _CORPUS_VERSION:
         raise FrozenBundleError(f"schema_version must be {_CORPUS_VERSION}")
     corpus_version = _string(payload.get("corpus_version"), "corpus_version")
     raw_cases = payload.get("cases")
     if not isinstance(raw_cases, list) or not raw_cases:
         raise FrozenBundleError("gold manifest must contain at least one case")
+    expected_case_count = 24 if kind == "development" else 12
+    if enforce_release_case_count and len(raw_cases) != expected_case_count:
+        raise FrozenBundleError(
+            f"{kind} corpus must contain exactly {expected_case_count} cases"
+        )
     bundles: list[FrozenCaseBundle] = []
     manifests: dict[str, GoldCaseManifest] = {}
     case_ids: set[str] = set()
@@ -494,7 +621,7 @@ def load_frozen_gold_corpus(
         relative = Path(bundle_path)
         if relative.is_absolute() or ".." in relative.parts:
             raise FrozenBundleError("bundle_path must stay within the gold root")
-        bundle = load_frozen_case_bundle(root / relative)
+        bundle = load_frozen_case_bundle(root / relative, sealed_holdout=kind == "holdout")
         if bundle.case_id != case_id:
             raise FrozenBundleError("manifest case_id does not match its frozen bundle")
         if kind == "holdout":
