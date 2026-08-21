@@ -330,7 +330,10 @@ class InvestigationState(BaseModel):
                 "retrieval_plan": self.retrieval_plan,
                 "retrieval_results": self.retrieval_results,
             },
-            "discover_and_freeze_documents": self.evidence,
+            "discover_and_freeze_documents": {
+                "evidence": self.evidence,
+                "retrieval_results": self.retrieval_results,
+            },
             "extract_exact_passages": {
                 "coverage_complete": self.coverage_complete,
                 "coverage_gaps": self.coverage_gaps,

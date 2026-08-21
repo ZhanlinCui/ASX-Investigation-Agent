@@ -62,8 +62,12 @@ class RetrievalTaskResult(BaseModel):
     task_id: str = Field(pattern=r"^R(?:[1-9]|10)$")
     lane: DriverLane
     status: Literal["COMPLETE", "PARTIAL", "FAILED", "SKIPPED"]
-    evidence_ids: list[str] = Field(default_factory=list, max_length=MAX_RESULTS_PER_TASK)
-    artifact_hashes: list[str] = Field(default_factory=list, max_length=MAX_RESULTS_PER_TASK)
+    evidence_ids: list[str] = Field(
+        default_factory=list, max_length=MAX_RESULTS_PER_TASK * 2
+    )
+    artifact_hashes: list[str] = Field(
+        default_factory=list, max_length=MAX_RESULTS_PER_TASK * 2
+    )
     reason_code: str | None = Field(default=None, min_length=3, max_length=120)
 
     @model_validator(mode="after")

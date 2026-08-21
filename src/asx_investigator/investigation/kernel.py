@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime
@@ -57,7 +58,12 @@ from asx_investigator.investigation.claim_compiler import (
 )
 from asx_investigator.investigation.ledger import LEDGER_SCHEMA_VERSION, LedgerBuilder
 from asx_investigator.investigation.mechanisms import run_mechanism_tests
-from asx_investigator.investigation.planning import RetrievalPlanner
+from asx_investigator.investigation.planning import (
+    RetrievalPlan,
+    RetrievalPlanner,
+    RetrievalTask,
+    RetrievalTaskResult,
+)
 from asx_investigator.market.forensics import calculate_market_move
 from asx_investigator.market.sessions import (
     classify_event,
@@ -384,9 +390,12 @@ class InvestigationKernel:
         if not state.has_completed("discover_and_freeze_documents"):
             state.evidence = None
             await self._stage(trace, on_stage, "discover_and_freeze_documents", "RUNNING")
-            raw_evidence = mechanical_evidence + await self.tools.get_evidence(
-                normalized_ticker, requested_date
+            planned_evidence, state.retrieval_results = await self._execute_initial_retrieval(
+                normalized_ticker,
+                requested_date,
+                state.retrieval_plan,
             )
+            raw_evidence = mechanical_evidence + planned_evidence
             raw_evidence.extend(supplied_evidence or [])
             state.evidence = self._deduplicate_evidence(
                 self._eligible_evidence(raw_evidence, session)
@@ -785,6 +794,74 @@ class InvestigationKernel:
             provider_diagnostics=provider_diagnostics,
             ledger=ledger.entries(),
             trace=trace,
+        )
+
+    async def _execute_initial_retrieval(
+        self,
+        ticker: str,
+        trade_date: date,
+        plan: RetrievalPlan | None,
+    ) -> tuple[list[EvidenceItem], list[RetrievalTaskResult]]:
+        """Run only the sealed initial tasks and persist safe execution summaries."""
+
+        if plan is None:
+            raise ValueError("document discovery requires a sealed retrieval plan")
+        # A legacy wrapper may expose a delegate's method through __getattr__.
+        # Treat only a method declared on the concrete gateway class (or its
+        # inheritance chain) as opt-in to the new contract; otherwise retain
+        # the wrapper's own get_evidence override and its adversarial fixture.
+        executor_method = getattr(type(self.tools), "execute_retrieval_task", None)
+        executor = getattr(self.tools, "execute_retrieval_task", None)
+        if executor_method is None or not callable(executor):
+            evidence = await self.tools.get_evidence(ticker, trade_date)
+            results = [
+                self._retrieval_result(plan.tasks[0], evidence, status="COMPLETE")
+            ] + [
+                RetrievalTaskResult(
+                    task_id=task.task_id,
+                    lane=task.lane,
+                    status="SKIPPED",
+                    reason_code="LEGACY_EXECUTOR_UNAVAILABLE",
+                )
+                for task in plan.tasks[1:]
+            ]
+            return evidence, results
+
+        async def execute(task: RetrievalTask) -> tuple[list[EvidenceItem], RetrievalTaskResult]:
+            try:
+                evidence = await executor(ticker, trade_date, task)
+            except DataProviderUnavailable as error:
+                reason_code = (
+                    error.outcomes[0].error_code
+                    if error.outcomes
+                    else "PROVIDER_UNAVAILABLE"
+                )
+                return [], RetrievalTaskResult(
+                    task_id=task.task_id,
+                    lane=task.lane,
+                    status="FAILED",
+                    reason_code=reason_code or "PROVIDER_UNAVAILABLE",
+                )
+            return evidence, self._retrieval_result(task, evidence, status="COMPLETE")
+
+        executed = await asyncio.gather(*(execute(task) for task in plan.tasks))
+        evidence = [item for items, _ in executed for item in items]
+        results = [result for _, result in executed]
+        return evidence, results
+
+    @staticmethod
+    def _retrieval_result(
+        task: RetrievalTask,
+        evidence: list[EvidenceItem],
+        *,
+        status: str,
+    ) -> RetrievalTaskResult:
+        return RetrievalTaskResult(
+            task_id=task.task_id,
+            lane=task.lane,
+            status=status,  # type: ignore[arg-type]
+            evidence_ids=[item.evidence_id for item in evidence][:10],
+            artifact_hashes=[item.content_hash for item in evidence][:10],
         )
 
     async def _reason(

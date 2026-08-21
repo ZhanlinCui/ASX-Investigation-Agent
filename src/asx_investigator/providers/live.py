@@ -7,8 +7,17 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, InstrumentIdentity
+from asx_investigator.evidence.ingestion import (
+    HttpxPublicAddressConnector,
+    SourceIngestor,
+    SourceRejected,
+)
+from asx_investigator.evidence.source_policy import SourcePolicy
+from asx_investigator.investigation.planning import RetrievalTask
 from asx_investigator.market.forensics import DailyBar
+from asx_investigator.market.sessions import resolve_session
 from asx_investigator.providers.errors import DataProviderUnavailable
+from asx_investigator.providers.evidence import OfficialEvidenceAcquirer
 from asx_investigator.providers.market import (
     CorporateAction,
     MarketDataReconciler,
@@ -40,11 +49,18 @@ class LiveToolGateway:
         client: httpx.AsyncClient | None = None,
         *,
         artifacts: ArtifactStore,
+        official_acquirer: OfficialEvidenceAcquirer | None = None,
     ) -> None:
         self.settings = settings
         self.artifacts = artifacts
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(timeout=20, trust_env=False)
+        self.source_policy = SourcePolicy.from_csv(settings.issuer_source_domains)
+        self.official_acquirer = official_acquirer or OfficialEvidenceAcquirer(
+            artifacts,
+            SourceIngestor(artifacts, HttpxPublicAddressConnector(client=self.client)),
+            self.source_policy,
+        )
 
     async def close(self) -> None:
         if self._owns_client:
@@ -272,6 +288,36 @@ class LiveToolGateway:
             id_prefix="D",
         )
 
+    async def execute_retrieval_task(
+        self, ticker: str, trade_date: date, task: RetrievalTask
+    ) -> list[EvidenceItem]:
+        """Execute only a sealed planner task; task values are never model-generated."""
+
+        if task.tool != "DISCOVER":
+            return []
+        candidates = await self._discover(
+            task.query,
+            trade_date,
+            id_prefix=task.task_id,
+            max_results=task.max_results,
+        )
+        session = resolve_session(trade_date)
+        promoted: list[EvidenceItem] = []
+        for candidate in candidates:
+            try:
+                item = await self.official_acquirer.promote(
+                    candidate,
+                    session,
+                    max_document_bytes=task.max_document_bytes,
+                )
+            except SourceRejected:
+                # Candidate discovery remains visible, while a rejected direct
+                # fetch can never silently become primary evidence.
+                continue
+            if item is not None:
+                promoted.append(item)
+        return candidates + promoted
+
     async def targeted_retrieve(
         self,
         ticker: str,
@@ -291,6 +337,7 @@ class LiveToolGateway:
         trade_date: date,
         *,
         id_prefix: str,
+        max_results: int = 8,
     ) -> list[EvidenceItem]:
         if not self.settings.tavily_api_key:
             return []
@@ -304,7 +351,7 @@ class LiveToolGateway:
                 "query": query,
                 "topic": "news",
                 "search_depth": "advanced",
-                "max_results": 8,
+                "max_results": max_results,
                 "include_raw_content": "markdown",
             },
         )

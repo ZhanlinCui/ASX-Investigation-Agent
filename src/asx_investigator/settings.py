@@ -19,5 +19,6 @@ class Settings(BaseSettings):
     eodhd_api_key: str | None = None
     marketstack_api_key: str | None = None
     tavily_api_key: str | None = None
+    issuer_source_domains: str | None = None
     database_url: str = "sqlite+aiosqlite:///./data/asx_investigator.db"
     artifact_dir: Path = Path("data/artifacts")

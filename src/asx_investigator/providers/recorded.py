@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from asx_investigator.domain.models import EvidenceItem, EvidenceRole, InstrumentIdentity
+from asx_investigator.investigation.planning import DriverLane, RetrievalTask
 from asx_investigator.market.forensics import DailyBar
 from asx_investigator.providers.market import CorporateAction, MarketDataResult
 from asx_investigator.providers.outcomes import ProviderOutcome, ProviderStatus
@@ -113,6 +114,15 @@ class RecordedToolGateway:
                 locator="Recorded fixture: announcement summary",
             )
         ]
+
+    async def execute_retrieval_task(
+        self, ticker: str, trade_date: date, task: RetrievalTask
+    ) -> list[EvidenceItem]:
+        """Exercise the Phase 5 tool contract without inventing extra fixtures."""
+
+        if task.lane == DriverLane.ISSUER_DISCLOSURE:
+            return await self.get_evidence(ticker, trade_date)
+        return []
 
     async def disclosure_coverage_complete(self, ticker: str, trade_date: date) -> bool:
         return ticker.upper() == "BHP" and trade_date == date(2026, 8, 20)
