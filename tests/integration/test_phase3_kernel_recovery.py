@@ -19,9 +19,34 @@ async def test_kernel_records_hash_bound_append_only_ledger_entries() -> None:
         "resolve_asx_session",
         "acquire_market_data",
     ]
+    assert "plan_evidence_retrieval" in [entry.stage for entry in report.ledger]
     assert all(entry.input_hashes for entry in report.ledger)
     assert all(entry.output_hashes for entry in report.ledger)
     assert report.ledger[-1].status == "COMPLETED"
+
+
+async def test_kernel_checkpoints_a_reusable_retrieval_plan_before_discovery() -> None:
+    service = InvestigationService(RecordedToolGateway.default())
+    checkpoints: list[CheckpointEnvelope] = []
+
+    async def observe(stage: str, status: str, payload: dict[str, object]) -> None:
+        if stage == "plan_evidence_retrieval" and status == "COMPLETED":
+            checkpoints.append(CheckpointEnvelope.model_validate(payload["checkpoint"]))
+
+    await service.investigate(
+        "BHP",
+        "2026-08-20",
+        mode="RECORDED",
+        version_id="version-plan",
+        request_artifact_hash="f" * 64,
+        input_artifact_hashes=["f" * 64],
+        on_stage=observe,
+    )
+
+    assert len(checkpoints) == 1
+    state = checkpoints[0].typed_state_json
+    assert state["retrieval_plan"]["policy_version"] == "retrieval-policy-v1"
+    assert state["retrieval_results"] == []
 
 
 class _FailOnceRecordedTools:

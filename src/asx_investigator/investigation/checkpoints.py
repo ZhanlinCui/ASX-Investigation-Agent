@@ -36,6 +36,7 @@ DURABLE_STAGE_ORDER = (
     "resolve_asx_session",
     "acquire_market_data",
     "test_mechanical_explanations",
+    "plan_evidence_retrieval",
     "discover_and_freeze_documents",
     "extract_exact_passages",
     "assemble_evidence_packet",
@@ -113,7 +114,7 @@ class InvestigationState(BaseModel):
     market_data: MarketDataCheckpoint | None = None
     corporate_actions: ProviderOutcome[list[CorporateAction]] | None = None
     retrieval_plan: RetrievalPlan | None = None
-    retrieval_results: list[RetrievalTaskResult] = Field(default_factory=list)
+    retrieval_results: list[RetrievalTaskResult] | None = None
     evidence: list[EvidenceItem] | None = None
     coverage_complete: bool | None = None
     coverage_gaps: list[CoverageGap] | None = None
@@ -142,6 +143,8 @@ class InvestigationState(BaseModel):
             "session": "resolve_asx_session",
             "market_data": "acquire_market_data",
             "corporate_actions": "test_mechanical_explanations",
+            "retrieval_plan": "plan_evidence_retrieval",
+            "retrieval_results": "plan_evidence_retrieval",
             "evidence": "discover_and_freeze_documents",
             "coverage_complete": "extract_exact_passages",
             "coverage_gaps": "extract_exact_passages",
@@ -322,6 +325,10 @@ class InvestigationState(BaseModel):
             "test_mechanical_explanations": {
                 "corporate_actions": self.corporate_actions,
                 "validations": self.validations,
+            },
+            "plan_evidence_retrieval": {
+                "retrieval_plan": self.retrieval_plan,
+                "retrieval_results": self.retrieval_results,
             },
             "discover_and_freeze_documents": self.evidence,
             "extract_exact_passages": {

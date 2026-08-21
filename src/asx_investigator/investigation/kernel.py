@@ -57,6 +57,7 @@ from asx_investigator.investigation.claim_compiler import (
 )
 from asx_investigator.investigation.ledger import LEDGER_SCHEMA_VERSION, LedgerBuilder
 from asx_investigator.investigation.mechanisms import run_mechanism_tests
+from asx_investigator.investigation.planning import RetrievalPlanner
 from asx_investigator.market.forensics import calculate_market_move
 from asx_investigator.market.sessions import (
     classify_event,
@@ -79,9 +80,11 @@ class InvestigationKernel:
         self,
         tools: InvestigationTools,
         reasoner: InvestigationReasoner | None = None,
+        planner: RetrievalPlanner | None = None,
     ) -> None:
         self.tools = tools
         self.reasoner = reasoner
+        self.planner = planner or RetrievalPlanner()
 
     async def run(
         self,
@@ -362,6 +365,21 @@ class InvestigationKernel:
             await completed("test_mechanical_explanations")
         else:
             validations = list(state.validations) or validations
+
+        if not state.has_completed("plan_evidence_retrieval"):
+            state.retrieval_plan = None
+            state.retrieval_results = None
+            await self._stage(trace, on_stage, "plan_evidence_retrieval", "RUNNING")
+            state.retrieval_plan = self.planner.build(
+                instrument=instrument,
+                session_date=requested_date,
+                move=market_move,
+                context_facts=admitted_context_facts,
+            )
+            # Execution begins in the next durable stage.  Keeping a typed empty
+            # result set proves a resumed case reuses this exact sealed plan.
+            state.retrieval_results = []
+            await completed("plan_evidence_retrieval")
 
         if not state.has_completed("discover_and_freeze_documents"):
             state.evidence = None
