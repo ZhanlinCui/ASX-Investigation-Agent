@@ -40,6 +40,39 @@ describe("App", () => {
     expect(html).not.toContain("Probability:");
   });
 
+  it("organizes a completed case into overview, evidence, and audit tabs", () => {
+    const report = {
+      ...completedReport(),
+      retrieval_plan: {
+        policy_version: "retrieval-policy-v1",
+        plan_hash: "f".repeat(64),
+        follow_up_used: false,
+        lanes: [
+          { lane: "ISSUER_DISCLOSURE", status: "COMPLETE", evidence_ids: ["E1"], source_count: 1, reason_code: null },
+          { lane: "CAPITAL_AND_CORPORATE_ACTION", status: "COMPLETE", evidence_ids: [], source_count: 0, reason_code: null },
+          { lane: "INDEX_REBALANCE", status: "COMPLETE", evidence_ids: [], source_count: 0, reason_code: null },
+          { lane: "SECTOR_AND_PEER", status: "COMPLETE", evidence_ids: [], source_count: 0, reason_code: null },
+          { lane: "COMMODITY_FX_MACRO", status: "SKIPPED", evidence_ids: [], source_count: 0, reason_code: "NOT_APPLICABLE" },
+          { lane: "ANALYST_EVENT", status: "SKIPPED", evidence_ids: [], source_count: 0, reason_code: "NOT_ENTITLED" },
+          { lane: "NO_CATALYST_CONTROL", status: "COMPLETE", evidence_ids: [], source_count: 0, reason_code: null },
+        ],
+      },
+    } as Report;
+
+    const html = renderToStaticMarkup(
+      <ReportView report={report} onRefined={() => undefined} />,
+    );
+
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain("Overview");
+    expect(html).toContain("Evidence");
+    expect(html).toContain("Audit");
+    expect(html).toContain("Investigation plan");
+    expect(html).toContain("Issuer disclosure");
+    expect(html).toContain("Not entitled");
+    expect(html).not.toContain("ASX announcement");
+  });
+
   it("renders only public evidence metadata and never falls back to a raw report passage", () => {
     const marker = "PRIVATE-WORKBENCH-MARKER-DO-NOT-PUBLISH";
     const base = completedReport();
