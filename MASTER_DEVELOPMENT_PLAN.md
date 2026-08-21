@@ -130,7 +130,7 @@ Phase 5 is the final pre-release delivery phase. It adds a deterministic, inspec
 
 The phase deliberately keeps the current safety boundaries: one typed kernel, two structured Gemini calls, one adaptive retrieval round, no model-controlled providers, no cross-case conclusions and ordinal confidence only. Search remains discovery; exact frozen approved sources remain the causal evidence boundary.
 
-P5.0 documentation and contract planning is complete. P5.1 through P5.6 are planned and not implemented. The authoritative scope, milestones, gates and final deliverables are in `docs/phase-plans/phase-05-recall-and-release-closure.md`; executable tasks are in `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`.
+P5.0 through P5.3 implementation is delivered on the Phase 5 branch: durable bounded retrieval plans, governed primary-source promotion, retrieval-failure abstention and operational non-causal memory routing are covered by local regression tests. P5.4 through P5.6 remain open because real point-in-time corpora, independent holdout grading and credentialed Live execution are not yet present. The authoritative scope, milestones, gates and final deliverables are in `docs/phase-plans/phase-05-recall-and-release-closure.md`; executable tasks are in `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`.
 
 ## Later phases
 

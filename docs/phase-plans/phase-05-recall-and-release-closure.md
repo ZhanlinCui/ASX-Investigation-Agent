@@ -1,6 +1,6 @@
 # Phase 5: Recall and Release Closure
 
-**Status:** Planned; implementation not started
+**Status:** P5.1–P5.3 implementation delivered on the Phase 5 branch; P5.4–P5.6 remain open
 **Prerequisite:** Phase 4 runtime readiness is implemented; external Phase 4 gates remain `NOT_RUN`
 **Detailed implementation plan:** `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`
 
@@ -28,9 +28,9 @@ The review is correct about the main remaining exposure: Live discovery begins w
 | Milestone | Deliverable | Exit gate |
 |---|---|---|
 | P5.0 | Contract and documentation reset | Current implementation, open gates and Phase 5 scope agree across the master plan, product requirement and phase plan |
-| P5.1 | Deterministic retrieval planner | Every investigation creates a bounded, inspectable plan across applicable driver lanes; provider/model budgets and stop conditions are tested |
-| P5.2 | Primary-source acquisition and coverage | Approved official documents are securely frozen, timestamped, passage-indexed and promoted by policy; discovery results alone remain non-causal |
-| P5.3 | Operational memory | Issuer reference facts and provider health are populated from audited inputs and used only for deterministic routing; isolation/admission adversarial tests remain green |
+| P5.1 | Deterministic retrieval planner | Implemented and tested: durable plan, seven fixed lanes, safe budgets and one follow-up allowance |
+| P5.2 | Primary-source acquisition and coverage | Implemented and tested: bounded lane execution, secure primary promotion, timing policy and retrieval-failure abstention |
+| P5.3 | Operational memory | Implemented and tested: allowlisted primary-source reference admission and TTL provider-health routing state |
 | P5.4 | Real development evaluation | Twenty-four point-in-time cases execute through the configured production reasoner with retrieval, attribution, abstention, latency and measured-AUD-cost results |
 | P5.5 | Sealed holdout and confidence review | Twelve issuer/time-isolated blind cases are externally graded; ordinal confidence metadata is reviewed without runtime label access or holdout tuning |
 | P5.6 | Final product release | Live smoke, end-to-end canaries, API/UI/export, clean-checkout and release evidence pass; otherwise the product remains explicitly unreleased |
