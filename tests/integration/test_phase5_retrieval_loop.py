@@ -4,6 +4,7 @@ from datetime import date
 
 from asx_investigator.investigation.checkpoints import CheckpointEnvelope
 from asx_investigator.investigation.service import InvestigationService
+from asx_investigator.providers.errors import DataProviderUnavailable
 from asx_investigator.providers.recorded import RecordedToolGateway
 
 
@@ -95,3 +96,20 @@ async def test_recorded_gateway_implements_the_same_planned_retrieval_contract()
     results = checkpoints[0].typed_state_json["retrieval_results"]
     assert results
     assert all(item["status"] == "COMPLETE" for item in results)
+
+
+async def test_failed_required_retrieval_lane_abstains_and_exposes_coverage_gap() -> None:
+    class _FailedLaneTools(_PlannedRecordedTools):
+        async def execute_retrieval_task(self, ticker: str, trade_date: date, task):
+            if str(task.lane) == "INDEX_REBALANCE":
+                raise DataProviderUnavailable("index source unavailable")
+            return await super().execute_retrieval_task(ticker, trade_date, task)
+
+    report = await InvestigationService(_FailedLaneTools()).investigate(
+        "BHP", "2026-08-20", mode="RECORDED"
+    )
+
+    assert report.outcome == "INSUFFICIENT_EVIDENCE"
+    assert report.coverage_status == "INCOMPLETE_RETRIEVAL_COVERAGE"
+    assert "RETRIEVAL_R3_FAILED" in {gap.gap_id for gap in report.coverage_gaps}
+    assert all(claim.claim_type != "CAUSE" for claim in report.claims)

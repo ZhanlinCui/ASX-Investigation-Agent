@@ -467,6 +467,22 @@ class InvestigationKernel:
                         ),
                     )
                 )
+            for result in state.retrieval_results or []:
+                if result.status not in {"FAILED", "PARTIAL"}:
+                    continue
+                coverage_gaps.append(
+                    CoverageGap(
+                        gap_id=f"RETRIEVAL_{result.task_id}_{result.status}",
+                        capability=f"retrieval:{result.lane}",
+                        provider="governed_retrieval",
+                        reason=result.reason_code or result.status,
+                        impact=(
+                            "A required investigation lane could not be covered; "
+                            "the case cannot publish a causal explanation."
+                        ),
+                        retryable=result.status == "FAILED",
+                    )
+                )
             if refinement_limited:
                 coverage_gaps.append(
                     CoverageGap(
@@ -484,6 +500,10 @@ class InvestigationKernel:
             await completed("extract_exact_passages")
         coverage_complete = state.coverage_complete
         coverage_gaps = list(state.coverage_gaps or [])
+        retrieval_coverage_complete = not any(
+            result.status in {"FAILED", "PARTIAL"}
+            for result in state.retrieval_results or []
+        )
         # A no-catalyst outcome means all required investigation capabilities
         # were observed. Corporate actions are one of those capabilities: a
         # missing or partial response cannot be papered over by issuer coverage.
@@ -492,6 +512,7 @@ class InvestigationKernel:
             and corporate_action_coverage
             and not unverifiable_actions
             and not refinement_limited
+            and retrieval_coverage_complete
         )
 
         if not state.has_completed("assemble_evidence_packet"):
@@ -575,6 +596,11 @@ class InvestigationKernel:
             # search for a catalyst.
             selected = None
             selected_support = []
+        if not retrieval_coverage_complete:
+            # A failed planned lane is an evidence gap, not proof that the
+            # already-found assertion is the whole explanation for the move.
+            selected = None
+            selected_support = []
         if selected:
             assertion_by_id = {item.assertion_id: item for item in assertions}
             selected_assertions = [
@@ -627,11 +653,16 @@ class InvestigationKernel:
                 "coverage check is unavailable."
                 if not corporate_action_coverage
                 else "The available evidence cannot support a validated causal explanation."
+                if retrieval_coverage_complete
+                else "A required evidence-retrieval lane failed before the explanation "
+                "could be validated."
             )
             claim = Claim(claim_id="C1", claim_type=ClaimType.UNRESOLVED, text=summary)
             outcome = (
                 InvestigationOutcome.INCOMPLETE_DATA
                 if not corporate_action_coverage
+                else InvestigationOutcome.INSUFFICIENT_EVIDENCE
+                if not retrieval_coverage_complete
                 else InvestigationOutcome.NO_IDENTIFIABLE_CATALYST
                 if not causal and effective_coverage_complete and reasoning_error is None
                 else InvestigationOutcome.INSUFFICIENT_EVIDENCE
@@ -784,6 +815,8 @@ class InvestigationKernel:
             coverage_status=(
                 "INCOMPLETE_REQUIRED_PROVIDER"
                 if not corporate_action_coverage
+                else "INCOMPLETE_RETRIEVAL_COVERAGE"
+                if not retrieval_coverage_complete
                 else "COMPLETE"
                 if effective_coverage_complete
                 else "SCOPED_REFINEMENT"
