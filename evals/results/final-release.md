@@ -16,7 +16,7 @@ This is the single current release-status record. Historical evaluation files pr
 | Recorded policy sentinels | `PASS` | 24/24 synthetic cases passed |
 | External-gold command semantics | `PASS` | Missing development and holdout roots returned `NOT_RUN` |
 | Frontend lint | `PASS` | ESLint 10 passed for TypeScript and React sources |
-| Frontend tests | `PASS` | Seven tests passed |
+| Frontend tests | `PASS` | Eight tests passed, including browser-level modal focus containment and restoration |
 | Frontend production build | `PASS` | TypeScript and Vite build passed |
 | Documentation and repository audit | `PASS` | Local links, status consistency, placeholders, stale root paths and common credential shapes checked |
 | Public-boundary regressions | `PASS` | Report, archive, version, SSE, Markdown and static-DOM suites exclude private evidence/model/provider state |
