@@ -517,6 +517,42 @@ class SharedMemoryRepository:
             facts.append(fact)
         return facts
 
+    async def list_provider_health(self, *, as_of: datetime) -> list[SharedMemoryEntry]:
+        """Return point-in-time provider routing facts outside every model packet."""
+
+        if as_of.tzinfo is None:
+            raise MemoryAdmissionError("Provider health as_of must include a timezone")
+        async with aiosqlite.connect(self.database_path) as connection:
+            connection.row_factory = aiosqlite.Row
+            rows = await (
+                await connection.execute(
+                    """SELECT * FROM shared_memory_entries
+                    WHERE memory_type = 'PROVIDER_HEALTH' AND revoked_at IS NULL
+                    AND valid_from <= ? AND valid_until > ?""",
+                    (as_of.isoformat(), as_of.isoformat()),
+                )
+            ).fetchall()
+        entries: list[SharedMemoryEntry] = []
+        for row in rows:
+            try:
+                entries.append(
+                    SharedMemoryEntry(
+                        entry_id=str(row["entry_id"]),
+                        memory_type=str(row["memory_type"]),
+                        payload=json.loads(str(row["payload_json"])),
+                        source_hash=row["source_hash"],
+                        source_url=row["source_url"],
+                        scope=str(row["scope"]),
+                        valid_from=datetime.fromisoformat(str(row["valid_from"])),
+                        valid_until=datetime.fromisoformat(str(row["valid_until"])),
+                        policy_version=str(row["policy_version"]),
+                        created_at=datetime.fromisoformat(str(row["created_at"])),
+                    )
+                )
+            except (TypeError, ValueError, ValidationError, json.JSONDecodeError):
+                continue
+        return entries
+
     async def _insert(self, entry: SharedMemoryEntry) -> None:
         async with aiosqlite.connect(self.database_path) as connection:
             await connection.execute(
