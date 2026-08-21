@@ -2,7 +2,7 @@
 ## Product Design Requirement
 
 **Version:** 2.6
-**Status:** Recorded-release candidate with Phase 4 activation readiness and Phase 5 recall/release closure planned; external evaluation and Live release gates OPEN (`NOT_RUN`)
+**Status:** Phase 5 release candidate with retrieval and operational-memory implementation delivered; final product packaging in progress; external evaluation and Live release gates OPEN (`NOT_RUN`)
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -70,7 +70,7 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - The EODHD-only provider-smoke runtime validates a completed ASX session with governed price and corporate-actions outcomes, without a model call or a causal report.
 - Real development, sealed holdout and credentialed Live execution remain visibly `NOT_RUN` until their external inputs are supplied.
 
-### Planned for Phase 5 final delivery
+### Phase 5 release-candidate delivery
 
 - A deterministic, inspectable investigation plan across issuer, corporate/capital action, index/rebalance, sector/peer, commodity/FX/macro, analyst-event and no-catalyst control lanes.
 - Bounded parallel discovery followed by secure capture and policy promotion of approved primary documents. Discovery-only search results remain non-causal.
@@ -78,6 +78,8 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - Audited issuer reference and provider-health memory used only for deterministic retrieval/provider routing. Memory values cannot support a hypothesis or enter Gemini prompts.
 - Lane-level source coverage, skipped reasons and provider failures shown separately from hypothesis confidence.
 - Twenty-four real point-in-time development cases, a separately controlled twelve-case sealed holdout, credentialed Live canaries and a truthful final release decision.
+
+The product UI, public report, repository homepage and documentation may be delivered as a release candidate before the external cases and Live canaries are supplied. Those packaging gates do not approve the product for a stable release and do not change any missing external gate from `NOT_RUN`.
 
 ## Design direction
 

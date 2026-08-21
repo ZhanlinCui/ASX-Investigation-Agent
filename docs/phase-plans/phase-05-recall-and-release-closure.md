@@ -1,6 +1,6 @@
 # Phase 5: Recall and Release Closure
 
-**Status:** P5.1–P5.3 implementation delivered on the Phase 5 branch; P5.4–P5.6 remain open
+**Status:** P5.1-P5.3 implementation delivered; P5.6A product packaging in progress; P5.4, P5.5 and P5.6B remain open
 **Prerequisite:** Phase 4 runtime readiness is implemented; external Phase 4 gates remain `NOT_RUN`
 **Detailed implementation plan:** `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`
 
@@ -33,7 +33,8 @@ The review is correct about the main remaining exposure: Live discovery begins w
 | P5.3 | Operational memory | Implemented and tested: allowlisted primary-source reference admission and TTL provider-health routing state |
 | P5.4 | Real development evaluation | Twenty-four point-in-time cases execute through the configured production reasoner with retrieval, attribution, abstention, latency and measured-AUD-cost results |
 | P5.5 | Sealed holdout and confidence review | Twelve issuer/time-isolated blind cases are externally graded; ordinal confidence metadata is reviewed without runtime label access or holdout tuning |
-| P5.6 | Final product release | Live smoke, end-to-end canaries, API/UI/export, clean-checkout and release evidence pass; otherwise the product remains explicitly unreleased |
+| P5.6A | Product packaging | Public retrieval-plan summary, release workbench, repository homepage, product documentation and clean-checkout local gates pass |
+| P5.6B | Measured release approval | Development, sealed holdout, Live canaries and final release evidence pass; otherwise the product remains explicitly unreleased |
 
 ## Driver-lane coverage
 
@@ -67,6 +68,8 @@ Each lane has an approved source policy, typed provider outcome, maximum query/d
 3. A concise decision rationale covering tools/source conflicts, context management, memory boundaries and evaluation/calibration.
 4. English workbench, API and Markdown surfaces that expose source coverage, validated decisions, confidence caps and exact controlled passages without chain-of-thought or private provider data.
 5. A clean-checkout runbook and final release record that states every external gate truthfully.
+
+P5.6A may ship a public release candidate while P5.4, P5.5 and P5.6B remain open. It must retain `NOT_RUN` for every missing external input and must not use the terms release-approved, production-validated or calibrated. Stable release approval requires the measured P5.6B gates.
 
 ## External inputs that remain required
 
