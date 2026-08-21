@@ -1,4 +1,6 @@
-# ASX Unusual Trading Investigation Agent  
+# ASX Unusual Trading Investigation Agent
+
+> **Reference status:** This is the original long-form R&D specification. It is retained for design history and does not record current implementation or release status. Use [`docs/README.md`](../README.md), [`docs/architecture.md`](../architecture.md) and [`docs/release-status.md`](../release-status.md) for the current product contract.
 ## Research & Development Design Specification
 
 **Document Version:** 1.0  

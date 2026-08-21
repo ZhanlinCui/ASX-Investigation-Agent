@@ -2,13 +2,15 @@
 
 Date: 20 August 2026
 
-## Artifact
+## Historical artifact
 
 - Source: `docs/architecture/asx-investigation-agent-architecture.tex`
-- PDF: `output/pdf/asx-investigation-agent-architecture.pdf`
+- PDF: `docs/assets/asx-investigation-agent-architecture.pdf`
 - Compiler: Tectonic 0.16.9
 - Verified command: `tmp/tools/tectonic -X compile docs/architecture/asx-investigation-agent-architecture.tex --outdir tmp/pdfs/build --keep-logs`
-- Rebuild with an installed compiler: `tectonic -X compile docs/architecture/asx-investigation-agent-architecture.tex --outdir output/pdf`
+- Rebuild with an installed compiler: `tectonic -X compile docs/architecture/asx-investigation-agent-architecture.tex --outdir docs/assets`
+
+This dossier records the architecture at the 20 August 2026 review point. The current implementation contract is `docs/architecture.md`; this QA record does not make a current release claim.
 
 ## Structural checks
 
@@ -54,4 +56,4 @@ The final render shows no clipped or overlapping content. All architecture diagr
 - Memory excludes previous narratives and sealed holdout labels from production priors.
 - The four required design decisions are answered on the cover and final page.
 - External market, governance, security and calibration claims map to `docs/architecture/references.md`.
-- Repository status reflects revision `ca128bc`: 12 passing Python tests and one passing recorded regression case, with confidence still labelled `UNCALIBRATED` and no blind performance result.
+- Repository status on the rendered dossier reflects historical revision `ca128bc`: 12 passing Python tests and one passing recorded regression case. Current results are maintained separately in `evals/results/final-release.md`; confidence remains labelled `UNCALIBRATED` and no blind performance result is claimed.

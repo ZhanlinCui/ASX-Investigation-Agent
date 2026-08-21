@@ -27,7 +27,7 @@ Phase 1 remains the verified request-to-report vertical slice. Phase 2 now adds 
 
 The recorded release candidate passes local backend, frontend and synthetic evaluation gates. It is not a Live-validated release: the 24 real adjudicated point-in-time development cases, 12-case sealed holdout and credentialed Live smoke run remain open. Their absence is reported as `NOT_RUN`, never as a pass.
 
-The controlled agent architecture is substantially implemented: eleven durable investigation stages include ranked hypothesis generation, one gap-directed retrieval opportunity, a separate challenge role and deterministic publication. The largest remaining product gap is Live evidence recall, not another reasoning framework. Initial discovery is still narrow and discovery-only results cannot normally become primary causal evidence. Shared-memory admission is mature but its safe issuer-reference and provider-health paths are not yet operationally populated. The local 24-case evaluation is a synthetic policy sentinel, not proof of real causal accuracy or confidence calibration.
+The controlled Agent architecture is implemented: durable investigation stages include a seven-lane retrieval plan, ranked hypothesis generation, one gap-directed retrieval opportunity, a separate challenge role and deterministic publication. Discovery-only results cannot become primary causal evidence. Shared-memory admission and its safe issuer-reference and provider-health routing paths are operational. The local 24-case evaluation is a synthetic policy sentinel, not proof of real causal accuracy or confidence calibration.
 
 ## Phase 2: Evidence-Complete Live Investigation
 
@@ -140,6 +140,6 @@ Evidence graphs, collaboration, alerts, mobile authoring, trade execution and au
 
 ## Change control
 
-The master plan records product sequence and gates. The active phase plan records implementation tasks. Product interaction rules live in `design requirement document v1.md`. The long R&D specification remains reference material and does not override current code or this plan.
+The master plan records product sequence and gates. The active phase plan records implementation tasks. Current product interaction rules live in `docs/product-design.md`. The original R&D specification is retained at `docs/reference/original-rd-specification.md` and does not override current code or this plan.
 
 Any change to source precedence, time eligibility, confidence semantics, memory isolation or holdout policy requires an explicit decision record and new regression tests.

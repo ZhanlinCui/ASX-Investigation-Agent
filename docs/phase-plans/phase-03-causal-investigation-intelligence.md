@@ -46,4 +46,4 @@ Fresh local verification is recorded in `evals/results/phase3-evaluation.md`. Th
 
 ## Documentation rule
 
-`MASTER_DEVELOPMENT_PLAN.md`, this phase plan, `README.md`, `design requirement document v1.md`, evaluation methodology and result files must report the same milestone state. Planned work is never described as implemented.
+`MASTER_DEVELOPMENT_PLAN.md`, this phase plan, `README.md`, `docs/product-design.md`, evaluation methodology and result files must report the same milestone state. Planned work is never described as implemented.
