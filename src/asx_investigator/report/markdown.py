@@ -50,6 +50,28 @@ def render_markdown(report: InvestigationReport) -> str:
                 "",
             ]
         )
+    retrieval_plan = public["retrieval_plan"]
+    if isinstance(retrieval_plan, dict):
+        lines.extend(
+            [
+                "## Investigation plan",
+                "",
+                f"- Retrieval policy: `{retrieval_plan['policy_version']}`",
+                f"- Plan hash: `{retrieval_plan['plan_hash']}`",
+                "- Evidence-gap follow-up: "
+                + ("used" if retrieval_plan["follow_up_used"] else "not used"),
+                "",
+            ]
+        )
+        for lane in retrieval_plan["lanes"]:
+            evidence_ids = ", ".join(f"[{item}]" for item in lane["evidence_ids"])
+            detail = f"; evidence {evidence_ids}" if evidence_ids else ""
+            reason = f"; reason {lane['reason_code']}" if lane["reason_code"] else ""
+            lines.append(
+                f"- {lane['lane']}: {lane['status']}; sources {lane['source_count']}"
+                f"{detail}{reason}"
+            )
+        lines.append("")
     lines.extend(["## Claims", ""])
     for claim in _items(public, "claims"):
         citations = " ".join(f"[{item}]" for item in claim["supporting_evidence_ids"])

@@ -453,6 +453,38 @@ class ProviderCallDiagnostic(BaseModel):
         return self
 
 
+class RetrievalLaneSummary(BaseModel):
+    lane: str = Field(pattern=r"^[A-Z][A-Z0-9_]{2,79}$")
+    status: Literal["PLANNED", "COMPLETE", "PARTIAL", "FAILED", "SKIPPED"]
+    evidence_ids: list[str] = Field(default_factory=list, max_length=10)
+    source_count: int = Field(ge=0, le=10)
+    reason_code: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]{2,119}$")
+
+    @model_validator(mode="after")
+    def validate_summary(self) -> RetrievalLaneSummary:
+        if self.source_count != len(self.evidence_ids):
+            raise ValueError("retrieval source_count must match the public evidence IDs")
+        if self.status in {"FAILED", "SKIPPED"} and self.reason_code is None:
+            raise ValueError("failed or skipped retrieval lanes require a reason code")
+        if self.status in {"PLANNED", "COMPLETE"} and self.reason_code is not None:
+            raise ValueError("planned or complete retrieval lanes cannot carry a reason code")
+        return self
+
+
+class RetrievalPlanSummary(BaseModel):
+    policy_version: str = Field(min_length=1, max_length=80)
+    plan_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    follow_up_used: bool = False
+    lanes: list[RetrievalLaneSummary] = Field(min_length=7, max_length=7)
+
+    @model_validator(mode="after")
+    def validate_lanes(self) -> RetrievalPlanSummary:
+        lane_names = [item.lane for item in self.lanes]
+        if len(lane_names) != len(set(lane_names)):
+            raise ValueError("retrieval lane summaries must be unique")
+        return self
+
+
 class InvestigationReport(BaseModel):
     case_id: str
     run_id: str
@@ -479,6 +511,7 @@ class InvestigationReport(BaseModel):
     source_policy_version: str = "phase2-v1"
     model_configuration: dict[str, str] = Field(default_factory=dict)
     provider_diagnostics: list[ProviderCallDiagnostic] = Field(default_factory=list)
+    retrieval_plan: RetrievalPlanSummary | None = None
     artifact_hashes: list[str] = Field(default_factory=list)
     checkpoint_lineage: list[CheckpointSummary] = Field(default_factory=list)
     assertions: list[EvidenceAssertion] = Field(default_factory=list)

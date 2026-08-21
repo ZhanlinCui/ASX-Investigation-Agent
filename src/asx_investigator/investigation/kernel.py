@@ -37,6 +37,8 @@ from asx_investigator.domain.models import (
     IssuerReferenceFact,
     PrimaryAssessment,
     ProviderCallDiagnostic,
+    RetrievalLaneSummary,
+    RetrievalPlanSummary,
     TradingSession,
     ValidationResult,
     ValidationStatus,
@@ -59,6 +61,7 @@ from asx_investigator.investigation.claim_compiler import (
 from asx_investigator.investigation.ledger import LEDGER_SCHEMA_VERSION, LedgerBuilder
 from asx_investigator.investigation.mechanisms import run_mechanism_tests
 from asx_investigator.investigation.planning import (
+    DriverLane,
     RetrievalPlan,
     RetrievalPlanner,
     RetrievalTask,
@@ -825,8 +828,67 @@ class InvestigationKernel:
             ),
             model_configuration=model_configuration,
             provider_diagnostics=provider_diagnostics,
+            retrieval_plan=self._retrieval_plan_summary(
+                state.retrieval_plan,
+                state.retrieval_results or [],
+                follow_up_used=bool(
+                    state.hypothesis_batch and state.hypothesis_batch.evidence_gap
+                ),
+            ),
             ledger=ledger.entries(),
             trace=trace,
+        )
+
+    @staticmethod
+    def _retrieval_plan_summary(
+        plan: RetrievalPlan | None,
+        results: list[RetrievalTaskResult],
+        *,
+        follow_up_used: bool,
+    ) -> RetrievalPlanSummary | None:
+        if plan is None:
+            return None
+        result_by_task = {item.task_id: item for item in results}
+        task_by_lane = {item.lane: item for item in plan.tasks}
+        lanes: list[RetrievalLaneSummary] = []
+        for lane in DriverLane:
+            task = task_by_lane.get(lane)
+            if task is None:
+                skipped = plan.skipped_lanes[lane]
+                lanes.append(
+                    RetrievalLaneSummary(
+                        lane=lane.value,
+                        status="SKIPPED",
+                        source_count=0,
+                        reason_code=skipped.reason_code,
+                    )
+                )
+                continue
+            result = result_by_task.get(task.task_id)
+            if result is None:
+                lanes.append(
+                    RetrievalLaneSummary(
+                        lane=lane.value,
+                        status="PLANNED",
+                        source_count=0,
+                    )
+                )
+                continue
+            evidence_ids = list(dict.fromkeys(result.evidence_ids))
+            lanes.append(
+                RetrievalLaneSummary(
+                    lane=lane.value,
+                    status=result.status,
+                    evidence_ids=evidence_ids,
+                    source_count=len(evidence_ids),
+                    reason_code=result.reason_code,
+                )
+            )
+        return RetrievalPlanSummary(
+            policy_version=plan.policy_version,
+            plan_hash=plan.plan_hash,
+            follow_up_used=follow_up_used,
+            lanes=lanes,
         )
 
     async def _execute_initial_retrieval(

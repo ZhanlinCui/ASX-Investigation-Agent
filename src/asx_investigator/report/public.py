@@ -143,6 +143,7 @@ def public_report_payload(report: InvestigationReport) -> dict[str, Any]:
         }
         for item in report.claims
     ]
+    retrieval_plan = report.retrieval_plan
     return {
         "case_id": report.case_id,
         "run_id": report.run_id,
@@ -258,6 +259,25 @@ def public_report_payload(report: InvestigationReport) -> dict[str, Any]:
             for item in report.conflicts
         ],
         "source_policy_version": report.source_policy_version,
+        "retrieval_plan": (
+            {
+                "policy_version": retrieval_plan.policy_version,
+                "plan_hash": retrieval_plan.plan_hash,
+                "follow_up_used": retrieval_plan.follow_up_used,
+                "lanes": [
+                    {
+                        "lane": item.lane,
+                        "status": item.status,
+                        "evidence_ids": list(item.evidence_ids),
+                        "source_count": item.source_count,
+                        "reason_code": item.reason_code,
+                    }
+                    for item in retrieval_plan.lanes
+                ],
+            }
+            if retrieval_plan is not None
+            else None
+        ),
         "artifact_hashes": list(report.artifact_hashes),
         "checkpoint_lineage": [
             {
