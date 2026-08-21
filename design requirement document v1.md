@@ -1,8 +1,8 @@
 # ASX Investigation Workbench
 ## Product Design Requirement
 
-**Version:** 2.5
-**Status:** Phase 3 recorded-release candidate with Phase 4 measured-cost and EODHD-smoke readiness; external evaluation and Live release gates OPEN (`NOT_RUN`)
+**Version:** 2.6
+**Status:** Recorded-release candidate with Phase 4 activation readiness and Phase 5 recall/release closure planned; external evaluation and Live release gates OPEN (`NOT_RUN`)
 **Language:** English interface  
 **Primary user:** Analyst or investigator reviewing an unusual ASX equity move
 
@@ -69,6 +69,15 @@ The workbench is an investigation product. It is not a trading terminal, a portf
 - External evaluation refuses to call the model when pricing evidence is incomplete; a caller cannot substitute an estimate for observed cost.
 - The EODHD-only provider-smoke runtime validates a completed ASX session with governed price and corporate-actions outcomes, without a model call or a causal report.
 - Real development, sealed holdout and credentialed Live execution remain visibly `NOT_RUN` until their external inputs are supplied.
+
+### Planned for Phase 5 final delivery
+
+- A deterministic, inspectable investigation plan across issuer, corporate/capital action, index/rebalance, sector/peer, commodity/FX/macro, analyst-event and no-catalyst control lanes.
+- Bounded parallel discovery followed by secure capture and policy promotion of approved primary documents. Discovery-only search results remain non-causal.
+- Exactly one optional evidence-gap follow-up; the product does not become an open-ended tool-calling or multi-agent system.
+- Audited issuer reference and provider-health memory used only for deterministic retrieval/provider routing. Memory values cannot support a hypothesis or enter Gemini prompts.
+- Lane-level source coverage, skipped reasons and provider failures shown separately from hypothesis confidence.
+- Twenty-four real point-in-time development cases, a separately controlled twelve-case sealed holdout, credentialed Live canaries and a truthful final release decision.
 
 ## Design direction
 

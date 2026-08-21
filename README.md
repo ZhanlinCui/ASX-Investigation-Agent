@@ -10,7 +10,7 @@ Phase 2 and Phase 3 implementation are delivered in recorded mode. Phase 3 provi
 
 Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
 
-See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap, `docs/phase-plans/phase-03-causal-investigation-intelligence.md` for the active phase record, and `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md` for the approved architecture.
+See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap, `docs/phase-plans/phase-05-recall-and-release-closure.md` for the active final-delivery phase, `docs/phase-plans/phase-03-causal-investigation-intelligence.md` for the recorded architecture record, and `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md` for the approved architecture.
 
 ## Setup
 

@@ -1,10 +1,11 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 21 August 2026
-**Product stage:** Phase 4 activation runtime implemented on the recorded-only release candidate; external evaluation and Live release gates OPEN (`NOT_RUN`)
+**Product stage:** Phase 4 activation runtime implemented on the recorded-only release candidate; Phase 5 recall and release closure planned; external evaluation and Live release gates OPEN (`NOT_RUN`)
 
 **Recorded architecture record:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
-**Active activation plan:** `docs/phase-plans/phase-04-live-validation-activation.md`
+**Active delivery plan:** `docs/phase-plans/phase-05-recall-and-release-closure.md`
+**Activation record:** `docs/phase-plans/phase-04-live-validation-activation.md`
 **Prior phase record:** `docs/phase-plans/phase-02-evidence-complete-live-investigation.md`
 
 ## Product contract
@@ -25,6 +26,8 @@ Four rules govern every release:
 Phase 1 remains the verified request-to-report vertical slice. Phase 2 now adds durable case versions, replayable checkpoints, governed market providers, secure source snapshots, exact passage retrieval, bounded hypothesis/challenge roles, deterministic validation, confidence caps, external gold-corpus contract validation, provenance display, a 24-case synthetic policy suite and the complete English workbench.
 
 The recorded release candidate passes local backend, frontend and synthetic evaluation gates. It is not a Live-validated release: the 24 real adjudicated point-in-time development cases, 12-case sealed holdout and credentialed Live smoke run remain open. Their absence is reported as `NOT_RUN`, never as a pass.
+
+The controlled agent architecture is substantially implemented: eleven durable investigation stages include ranked hypothesis generation, one gap-directed retrieval opportunity, a separate challenge role and deterministic publication. The largest remaining product gap is Live evidence recall, not another reasoning framework. Initial discovery is still narrow and discovery-only results cannot normally become primary causal evidence. Shared-memory admission is mature but its safe issuer-reference and provider-health paths are not yet operationally populated. The local 24-case evaluation is a synthetic policy sentinel, not proof of real causal accuracy or confidence calibration.
 
 ## Phase 2: Evidence-Complete Live Investigation
 
@@ -121,11 +124,19 @@ real 24-case development corpus and separately controlled 12-case holdout, remai
 Phase 4 exercises the Phase 3 architecture and makes a measured release decision; it does
 not expand product scope. See `docs/phase-plans/phase-04-live-validation-activation.md`.
 
+## Phase 5: Recall and Release Closure
+
+Phase 5 is the final pre-release delivery phase. It adds a deterministic, inspectable retrieval plan across a small fixed set of driver lanes, governed acquisition of approved primary documents, and operational use of non-causal issuer reference/provider-health memory for routing only. It then executes the existing production-path evaluation against 24 real development cases and a separately controlled 12-case sealed holdout before making a release decision.
+
+The phase deliberately keeps the current safety boundaries: one typed kernel, two structured Gemini calls, one adaptive retrieval round, no model-controlled providers, no cross-case conclusions and ordinal confidence only. Search remains discovery; exact frozen approved sources remain the causal evidence boundary.
+
+P5.0 documentation and contract planning is complete. P5.1 through P5.6 are planned and not implemented. The authoritative scope, milestones, gates and final deliverables are in `docs/phase-plans/phase-05-recall-and-release-closure.md`; executable tasks are in `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`.
+
 ## Later phases
 
-A later phase may add probability calibration after a larger independently labelled corpus supports that language. PostgreSQL/object storage deployment, authentication, multi-user access and stronger observability also remain later work.
+A post-release phase may add probability calibration only after a materially larger independently labelled corpus supports that language. PostgreSQL/object storage deployment, authentication, multi-user access and broader operational observability also remain later work.
 
-Evidence graphs, collaboration, alerts, mobile authoring, trade execution and automatic cross-case learning remain deferred until the Phase 2 release gates pass.
+Evidence graphs, collaboration, alerts, mobile authoring, trade execution and automatic cross-case learning remain deferred until the final Phase 5 release gates pass.
 
 ## Change control
 
