@@ -8,19 +8,27 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 
-import { apiBase, loadVersionReport } from "./api";
-import { ReportView, VersionComparison } from "./components/CaseReport";
+import { apiBase } from "./api";
+import { ReportView } from "./components/CaseReport";
 import { InvestigationForm } from "./components/InvestigationForm";
 import { EmptyState, RunningTimeline } from "./components/InvestigationStates";
 import { toSydneyIso } from "./time";
 import type { ArchiveItem, Report, Stage, Status } from "./types";
 
-export { loadVersionReport, ReportView, VersionComparison };
-export type { Report };
-
 function title(value: string) {
   const text = value.replaceAll("_", " ").toLowerCase();
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+async function fetchArchive(): Promise<ArchiveItem[] | null> {
+  try {
+    const response = await fetch(`${apiBase}/api/v1/investigations`);
+    return response.ok
+      ? ((await response.json()) as { items: ArchiveItem[] }).items
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export default function App() {
@@ -37,19 +45,14 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [sourcePublishedAt, setSourcePublishedAt] = useState("2026-08-20T08:00");
 
-  async function refreshArchive() {
-    try {
-      const response = await fetch(`${apiBase}/api/v1/investigations`);
-      if (response.ok) {
-        setArchive(((await response.json()) as { items: ArchiveItem[] }).items);
-      }
-    } catch {
-      // The investigation form remains usable while the API reconnects.
-    }
-  }
-
   useEffect(() => {
-    void refreshArchive();
+    let current = true;
+    void fetchArchive().then((items) => {
+      if (current && items) setArchive(items);
+    });
+    return () => {
+      current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -83,7 +86,9 @@ export default function App() {
       setStatus(payload.status);
       if (payload.status === "COMPLETED") {
         setReport(payload);
-        void refreshArchive();
+        void fetchArchive().then((items) => {
+          if (items) setArchive(items);
+        });
       }
       if (payload.status === "FAILED_RECOVERABLE") {
         setError(payload.error ?? "Investigation failed at a recoverable stage.");

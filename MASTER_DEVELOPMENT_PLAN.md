@@ -1,7 +1,7 @@
 # ASX Investigation Agent Master Development Plan
 
 **Last updated:** 21 August 2026
-**Product stage:** Phase 5 retrieval and operational-memory implementation delivered; final product packaging in progress; external evaluation and Live release gates OPEN (`NOT_RUN`)
+**Product stage:** Phase 5 retrieval, operational memory and release-candidate packaging delivered; external evaluation and Live release gates OPEN (`NOT_RUN`)
 
 **Recorded architecture record:** `docs/phase-plans/phase-03-causal-investigation-intelligence.md`
 **Active delivery plan:** `docs/phase-plans/phase-05-recall-and-release-closure.md`
@@ -130,7 +130,7 @@ Phase 5 is the final pre-release delivery phase. It adds a deterministic, inspec
 
 The phase deliberately keeps the current safety boundaries: one typed kernel, two structured Gemini calls, one adaptive retrieval round, no model-controlled providers, no cross-case conclusions and ordinal confidence only. Search remains discovery; exact frozen approved sources remain the causal evidence boundary.
 
-P5.0 through P5.3 implementation is delivered: durable bounded retrieval plans, governed primary-source promotion, retrieval-failure abstention and operational non-causal memory routing are covered by local regression tests. P5.6A now packages those decisions in the public report, English workbench, repository homepage and product documentation. P5.4, P5.5 and P5.6B remain open because real point-in-time corpora, independent holdout grading and credentialed Live execution are not yet present. Product packaging can be merged without implying release approval. The authoritative scope, milestones, gates and final deliverables are in `docs/phase-plans/phase-05-recall-and-release-closure.md`; executable tasks are in `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`.
+P5.0 through P5.3 implementation is delivered: durable bounded retrieval plans, governed primary-source promotion, retrieval-failure abstention and operational non-causal memory routing are covered by local regression tests. P5.6A is delivered: those decisions now appear in the safe public report, final English workbench, repository homepage and consolidated product documentation, with local release-quality and clean-checkout gates. P5.4, P5.5 and P5.6B remain open because real point-in-time corpora, independent holdout grading and credentialed Live execution are not yet present. Release-candidate packaging does not imply stable release approval. The authoritative scope, milestones, gates and final deliverables are in `docs/phase-plans/phase-05-recall-and-release-closure.md`; executable tasks are in `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`.
 
 ## Later phases
 

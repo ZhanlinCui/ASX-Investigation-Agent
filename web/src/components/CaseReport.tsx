@@ -73,21 +73,38 @@ export function ReportView({
     locator?: string;
     page?: number;
   } | null>(null);
-  const [parentReport, setParentReport] = useState<Report | null>(null);
+  const [parentState, setParentState] = useState<{
+    versionId: string;
+    report: Report | null;
+  } | null>(null);
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
   const primary = report.claims.find(
     (claim) => claim.claim_id === report.assessment.primary_claim_id,
   );
 
   useEffect(() => {
-    if (!report.parent_version_id) {
-      setParentReport(null);
-      return;
-    }
+    if (!report.parent_version_id) return;
+    let current = true;
     void loadVersionReport(report.case_id, report.parent_version_id)
-      .then(setParentReport)
-      .catch(() => setParentReport(null));
+      .then((parent) => {
+        if (current && report.parent_version_id) {
+          setParentState({ versionId: report.parent_version_id, report: parent });
+        }
+      })
+      .catch(() => {
+        if (current && report.parent_version_id) {
+          setParentState({ versionId: report.parent_version_id, report: null });
+        }
+      });
+    return () => {
+      current = false;
+    };
   }, [report.case_id, report.parent_version_id]);
+
+  const parentReport =
+    parentState && parentState.versionId === report.parent_version_id
+      ? parentState.report
+      : null;
 
   async function inspect(item: Evidence) {
     setSelected(item);

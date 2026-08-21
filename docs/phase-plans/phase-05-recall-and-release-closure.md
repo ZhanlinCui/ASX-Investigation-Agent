@@ -1,6 +1,6 @@
 # Phase 5: Recall and Release Closure
 
-**Status:** P5.1-P5.3 implementation delivered; P5.6A product packaging in progress; P5.4, P5.5 and P5.6B remain open
+**Status:** P5.1-P5.3 and P5.6A delivered; P5.4, P5.5 and P5.6B remain open (`NOT_RUN`)
 **Prerequisite:** Phase 4 runtime readiness is implemented; external Phase 4 gates remain `NOT_RUN`
 **Detailed implementation plan:** `docs/superpowers/plans/2026-08-21-final-delivery-closure.md`
 
@@ -33,7 +33,7 @@ The review is correct about the main remaining exposure: Live discovery begins w
 | P5.3 | Operational memory | Implemented and tested: allowlisted primary-source reference admission and TTL provider-health routing state |
 | P5.4 | Real development evaluation | Twenty-four point-in-time cases execute through the configured production reasoner with retrieval, attribution, abstention, latency and measured-AUD-cost results |
 | P5.5 | Sealed holdout and confidence review | Twelve issuer/time-isolated blind cases are externally graded; ordinal confidence metadata is reviewed without runtime label access or holdout tuning |
-| P5.6A | Product packaging | Public retrieval-plan summary, release workbench, repository homepage, product documentation and clean-checkout local gates pass |
+| P5.6A | Product packaging | Complete: public retrieval-plan summary, release workbench, repository homepage, product documentation and clean-checkout local gates pass |
 | P5.6B | Measured release approval | Development, sealed holdout, Live canaries and final release evidence pass; otherwise the product remains explicitly unreleased |
 
 ## Driver-lane coverage

@@ -1,4 +1,4 @@
-name: Phase 2 quality gates
+name: Release quality gates
 
 on:
   push:
@@ -14,7 +14,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e '.[dev]'
-      - run: python -m ruff check .
+      - run: python -m ruff check src tests evals
+      - run: python -m compileall -q src
       - run: python -m pytest -q
       - run: python evals/run_recorded_evals.py
 
@@ -34,5 +35,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      - run: pnpm lint
+      - run: pnpm test -- --run
       - run: pnpm build

@@ -1,8 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import App, { loadVersionReport, ReportView, VersionComparison, type Report } from "./App";
+import App from "./App";
+import { loadVersionReport } from "./api";
+import { ReportView, VersionComparison } from "./components/CaseReport";
 import { toSydneyIso } from "./time";
+import type { Report } from "./types";
 
 describe("App", () => {
   it("renders an English investigation workspace", () => {

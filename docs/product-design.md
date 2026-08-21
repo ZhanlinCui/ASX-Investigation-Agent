@@ -2,7 +2,7 @@
 
 **Version:** 3.0 release candidate<br>
 **Language:** English<br>
-**Status:** Product packaging delivered locally; external development, holdout and Live gates `NOT_RUN`
+**Status:** P5.6A release-candidate packaging delivered; external development, holdout and Live gates `NOT_RUN`
 
 ## Design intent
 
