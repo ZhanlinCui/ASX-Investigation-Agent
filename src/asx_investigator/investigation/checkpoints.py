@@ -23,12 +23,13 @@ from asx_investigator.investigation.ledger import (
     LedgerBuilder,
     LedgerIntegrityError,
 )
+from asx_investigator.investigation.planning import RetrievalPlan, RetrievalTaskResult
 from asx_investigator.market.forensics import DailyBar
 from asx_investigator.providers.market import CorporateAction, MarketDataResult
 from asx_investigator.providers.outcomes import ProviderOutcome
 
-CHECKPOINT_POLICY_VERSION = "phase3-p3.6-v2"
-CHECKPOINT_SCHEMA_VERSION = "checkpoint-v2"
+CHECKPOINT_POLICY_VERSION = "phase5-p5.1-v1"
+CHECKPOINT_SCHEMA_VERSION = "checkpoint-v3"
 
 DURABLE_STAGE_ORDER = (
     "resolve_instrument",
@@ -111,6 +112,8 @@ class InvestigationState(BaseModel):
     session: TradingSession | None = None
     market_data: MarketDataCheckpoint | None = None
     corporate_actions: ProviderOutcome[list[CorporateAction]] | None = None
+    retrieval_plan: RetrievalPlan | None = None
+    retrieval_results: list[RetrievalTaskResult] = Field(default_factory=list)
     evidence: list[EvidenceItem] | None = None
     coverage_complete: bool | None = None
     coverage_gaps: list[CoverageGap] | None = None

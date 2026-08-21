@@ -4,6 +4,7 @@ from datetime import date
 from typing import Protocol
 
 from asx_investigator.domain.models import EvidenceItem, InstrumentIdentity
+from asx_investigator.investigation.planning import RetrievalTask
 from asx_investigator.market.forensics import DailyBar
 from asx_investigator.providers.market import CorporateAction, MarketDataResult
 from asx_investigator.providers.outcomes import ProviderOutcome
@@ -25,6 +26,10 @@ class InvestigationTools(Protocol):
     ) -> ProviderOutcome[list[CorporateAction]]: ...
 
     async def get_evidence(self, ticker: str, trade_date: date) -> list[EvidenceItem]: ...
+
+    async def execute_retrieval_task(
+        self, ticker: str, trade_date: date, task: RetrievalTask
+    ) -> list[EvidenceItem]: ...
 
     async def targeted_retrieve(
         self,

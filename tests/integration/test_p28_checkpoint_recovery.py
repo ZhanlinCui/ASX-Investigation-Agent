@@ -649,7 +649,7 @@ async def test_late_checkpoint_cross_checks_every_prior_artifact_output(
     ("field", "value", "message"),
     [
         ("policy_version", "phase2-v2", "policy"),
-        ("schema_version", "checkpoint-v3", "schema"),
+        ("schema_version", f"{CHECKPOINT_SCHEMA_VERSION}-unsupported", "schema"),
     ],
 )
 @pytest.mark.asyncio

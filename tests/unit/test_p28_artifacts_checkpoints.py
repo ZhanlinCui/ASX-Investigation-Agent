@@ -97,11 +97,13 @@ def test_p3_assertion_checkpoints_use_a_new_contract_and_field_name() -> None:
         policy_version=CHECKPOINT_POLICY_VERSION,
     )
 
-    assert CHECKPOINT_SCHEMA_VERSION == "checkpoint-v2"
-    assert CHECKPOINT_POLICY_VERSION == "phase3-p3.6-v2"
+    assert CHECKPOINT_SCHEMA_VERSION == "checkpoint-v3"
+    assert CHECKPOINT_POLICY_VERSION == "phase5-p5.1-v1"
     assert checkpoint.schema_version == CHECKPOINT_SCHEMA_VERSION
     assert "targeted_assertion_ids" in state.model_dump()
     assert "targeted_evidence_ids" not in state.model_dump()
+    assert "retrieval_plan" in state.model_dump()
+    assert "retrieval_results" in state.model_dump()
 
 
 @pytest.mark.asyncio
