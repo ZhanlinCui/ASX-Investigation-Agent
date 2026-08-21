@@ -1,92 +1,163 @@
 # ASX Investigation Agent
 
-An evidence-led product for investigating unusual moves in ASX-listed equities. It accepts an ASX code and trading date, calculates the observed move, retrieves time-eligible evidence, and returns confidence-rated claims with citations and visible coverage limits.
+> Evidence-first investigation for unusual ASX equity moves.
 
-The product does not recommend trades or predict prices.
+Given an ASX ticker and trading date, the agent reconstructs the move, investigates a bounded set of possible drivers, and publishes a confidence-rated explanation in which every causal claim is tied to frozen evidence.
 
-## Current release
+[Quick start](#recorded-demo-quick-start) · [Architecture](docs/architecture.md) · [Evaluation](docs/evaluation.md) · [Release status](docs/release-status.md)
 
-Phase 2 and Phase 3 implementation are delivered in recorded mode. Phase 3 provides assertion-bound reasoning, deterministic mechanism tests, an append-only ledger, point-in-time shared-memory isolation, frozen gold execution, ordinal calibration gates, and audited JSON, Markdown and workbench decisions. Phase 4 has added hash-bound Gemini usage and AUD-cost readiness for external evaluation, plus a bounded EODHD provider-smoke runtime. The product is not release-approved: the external development gold corpus, sealed holdout and credentialed Live gates remain OPEN and `NOT_RUN`. P2.8 adds frozen provider artifacts, durable checkpoint recovery, bounded targeted-evidence acceptance, external gold-corpus validation and provenance display. Fresh recorded-release results are in `evals/results/phase3-evaluation.md`.
+[![Release quality gates](https://github.com/ZhanlinCui/ASX-Investigation-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ZhanlinCui/ASX-Investigation-Agent/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/Python-3.12-1f6f70)
+![React 19](https://img.shields.io/badge/React-19-1f6f70)
+![Release candidate](https://img.shields.io/badge/status-release%20candidate-b26a2f)
 
-Implemented capabilities include SQLite WAL case versions and event replay, EODHD/Marketstack source policy, ASX corporate-action checks, safe PDF/text/URL ingestion, exact passage retrieval, two bounded Gemini roles, deterministic claim validation, confidence caps, JSON/Markdown reports, a persistent archive, evidence viewer, trace, refinements and CI.
+![ASX Investigation Agent workbench showing a completed recorded BHP investigation](docs/assets/workbench-overview.png)
 
-See `MASTER_DEVELOPMENT_PLAN.md` for the roadmap, `docs/phase-plans/phase-05-recall-and-release-closure.md` for the active final-delivery phase, `docs/phase-plans/phase-03-causal-investigation-intelligence.md` for the recorded architecture record, and `docs/superpowers/specs/2026-08-20-phase-3-causal-investigation-intelligence-design.md` for the approved architecture.
+## Why this exists
 
-## Setup
+A price chart can show that a stock moved. It cannot establish why. The hard part is separating a plausible story from a time-eligible, source-backed explanation while prices, disclosures, corporate actions, sector effects and provider failures may disagree.
 
-Use Python 3.12 and pnpm.
+ASX Investigation Agent is a research workbench for professional analysts, technical reviewers and Agent product evaluators. It is designed to make the investigation inspectable: observed market facts, retrieved sources, rejected alternatives, coverage limits and confidence controls remain visible from the first retrieval lane to the final report.
+
+It does not predict prices, recommend trades or execute orders.
+
+## What makes the agent different
+
+- **A narrow model boundary.** Gemini ranks evidence-bound hypotheses and challenges the leading candidate. Deterministic code owns ASX sessions, calculations, source timing, evidence IDs, claim publication and confidence caps.
+- **Audited retrieval, not open-ended browsing.** Seven fixed driver lanes cover issuer disclosures, corporate actions, index changes, peers, macro inputs, analyst events and a no-catalyst control. One evidence-gap follow-up is permitted when justified.
+- **Real abstention.** Missing primary evidence, incomplete providers, unresolved timing or material conflicts can produce `INSUFFICIENT_EVIDENCE` or `INCOMPLETE_DATA` instead of a fabricated catalyst.
+- **Immutable evidence and replay.** Provider responses and source documents are content-addressed. Case versions, checkpoints and decision-ledger entries preserve provenance without exposing private model text.
+- **Case-isolated memory.** Cross-case memory is restricted to allowlisted context such as provider health, policy versions and point-in-time issuer reference facts. Prior causal conclusions and holdout labels cannot enter a new case.
+
+## Audited investigation workflow
+
+```mermaid
+flowchart LR
+    A[Resolve ASX instrument<br/>and trading session] --> B[Acquire and reconcile<br/>market facts]
+    B --> C[Run seven bounded<br/>retrieval lanes]
+    C --> D[Freeze sources and<br/>extract exact passages]
+    D --> E[Build typed assertions<br/>and evidence packet]
+    E --> F[Rank hypotheses<br/>with Gemini]
+    F --> G{Evidence gap<br/>justifies follow-up?}
+    G -- Yes, once --> C
+    G -- No --> H[Challenge leading<br/>hypothesis]
+    H --> I[Deterministic mechanism,<br/>timing and citation validation]
+    I --> J{Publication gate}
+    J -- Supported --> K[Confidence-rated<br/>cited explanation]
+    J -- Not supported --> L[Audited abstention<br/>or incomplete outcome]
+```
+
+The report is rendered only from validated public artifacts. Search queries, provider bodies, memory values, prompts, private model prose and chain-of-thought are never part of the public report.
+
+## Four core design decisions
+
+| Area | Product decision |
+| --- | --- |
+| Tools | Typed providers return success, empty, partial or explicit failure outcomes. Primary and fallback market sources are never averaged; material disagreements become conflict records. |
+| Context | Long documents are frozen, passage-indexed and filtered into a bounded evidence packet of exact, time-classified snippets. Document instructions are untrusted data. |
+| Memory | SQLite WAL stores immutable case versions and append-only events. Shared memory is allowlisted, point-in-time and context-only; case claims never transfer across investigations. |
+| Evaluation | Deterministic unit, contract, adversarial and recorded suites protect safety invariants. Development gold, sealed holdout and Live approval are separate external gates and remain `NOT_RUN` until supplied. |
+
+Read the concise rationale in [Four core decisions](docs/decisions/four-core-decisions.md).
+
+## Product capabilities
+
+- ASX trading-calendar and AEST/AEDT session resolution
+- AUD market-move reconstruction and benchmark-relative facts
+- EODHD primary market acquisition with typed failure semantics
+- Corporate-action timing and mechanical-driver validation
+- Safe PDF, HTML, text and controlled URL ingestion up to 20 MB
+- Frozen evidence register with exact, version-scoped passage retrieval
+- Ranked hypotheses, contradiction tracking and bounded challenge
+- Confidence bands, completeness and deterministic caps shown separately
+- Persistent archive, recoverable checkpoints and immutable child refinements
+- Public JSON, Markdown, retrieval-plan and decision-ledger views
+- Recorded, adversarial, provider-contract and frozen-corpus evaluation paths
+
+## Technology
+
+| Layer | Choice |
+| --- | --- |
+| Agent kernel | Python 3.12, typed state machine, Pydantic |
+| API | FastAPI, SSE replay |
+| Model | Gemini structured output behind a bounded reasoning contract |
+| Storage | SQLite WAL, FTS5, SHA-256 content-addressed artifacts |
+| Market data | EODHD primary; Marketstack fallback contract where configured |
+| Discovery | Bounded connectors; discovery results cannot become primary causal evidence by themselves |
+| Workbench | React 19, TypeScript, Vite, native CSS, Phosphor Icons |
+| Quality | Pytest, Ruff, Vitest, ESLint, recorded policy sentinels |
+
+## Recorded demo quick start
+
+Requirements: Python 3.12, Node.js 22 and pnpm 10.
 
 ```bash
+git clone https://github.com/ZhanlinCui/ASX-Investigation-Agent.git
+cd ASX-Investigation-Agent
+
 python3.12 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
+pnpm --dir web install --frozen-lockfile
+
 cp .env.example .env
-cd web && pnpm install
+PYTHONPATH=src .venv/bin/uvicorn asx_investigator.main:app --reload
 ```
 
-Required for Live model synthesis:
-
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL`, default `gemini-3-flash-preview`
-
-Required before the full Live investigation gate can pass:
-
-- `EODHD_API_KEY`
-- `MARKETSTACK_API_KEY`
-- `TAVILY_API_KEY` where discovery is enabled
-
-Required before an external gold run can report measured model cost:
-
-- `GEMINI_PRICING_SCHEDULE_VERSION`
-- `GEMINI_INPUT_AUD_PER_MILLION_TOKENS`
-- `GEMINI_OUTPUT_AUD_PER_MILLION_TOKENS`
-
-Secrets are read by the backend only. They must not be committed or sent to the browser.
-
-The bounded EODHD provider smoke uses only `EODHD_API_KEY`; it does not invoke Gemini,
-discovery or a causal-investigation report.
-
-## Run
+In a second terminal:
 
 ```bash
-.venv/bin/uvicorn asx_investigator.main:app --reload
-cd web && pnpm dev
+pnpm --dir web dev
 ```
 
-Open `http://localhost:5173`. The recorded BHP case uses ticker `BHP`, date `2026-08-20`, and mode `RECORDED`.
+Open `http://localhost:5173`, choose **Recorded case**, and investigate `BHP` on `2026-08-20`. The recorded path does not require financial-data or model credentials.
 
-The workbench can attach PDF, HTML or text sources up to 20 MB. URL ingestion is available through `POST /api/v1/sources/fetch`; private and reserved network targets are rejected.
+## Live configuration
 
-## Verify
+Secrets are backend-only environment variables. Copy `.env.example` to the ignored `.env` and configure only the providers you intend to use.
 
-```bash
-.venv/bin/python -m pytest -q
-.venv/bin/ruff check src tests evals
-.venv/bin/python evals/run_recorded_evals.py
-.venv/bin/python evals/run_gold_evals.py --format markdown
-cd web && pnpm test && pnpm build
+```dotenv
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3-flash-preview
+EODHD_API_KEY=
+MARKETSTACK_API_KEY=
+TAVILY_API_KEY=
 ```
 
-Use `evals/run_recorded_evals.py --write-results` only when intentionally refreshing the versioned evaluation artifacts.
+External gold evaluation additionally requires a versioned AUD pricing schedule. See [Evaluation](docs/evaluation.md) before running a paid model path. Any key previously pasted into a chat, issue or log must be rotated before a credentialed gate.
 
-### EODHD provider smoke
+## Evaluation status
 
-With a locally configured, ignored `.env`, run one **completed** ASX session:
+| Gate | Current result | What it proves |
+| --- | --- | --- |
+| Python test suite | `PASS` | Deterministic domain, provider, persistence, Agent, memory, evaluation and public-boundary contracts |
+| Recorded policy sentinels | `24/24 PASS` | Reproducible safety and workflow invariants on synthetic fixtures |
+| Frontend tests and build | `PASS` | Workbench rendering and production compilation |
+| External development gold, 24 cases | `NOT_RUN` | Requires the external point-in-time corpus and measured model path |
+| Sealed holdout, 12 cases | `NOT_RUN` | Requires externally supplied blind labels and grading root |
+| Credentialed Live approval | `NOT_RUN` | Requires rotated provider credentials and completed-session smoke cases |
 
-```bash
-.venv/bin/python evals/run_live_smoke.py --ticker BHP --trade-date 2026-08-20 --format markdown
-```
+The 24 recorded cases are synthetic policy sentinels, not historical accuracy evidence. Confidence is an ordinal `LOW / MEDIUM / HIGH` evidence-strength band, not a probability, and remains `UNCALIBRATED` until the external calibration protocol is completed. Current raw evidence is in [Release status](docs/release-status.md).
 
-The command writes raw provider snapshots only to ignored `data/live-smoke/` and emits a
-safe report with provider status, coverage and artifact hashes. Missing `EODHD_API_KEY`
-is `NOT_RUN`; credential, entitlement, rate-limit, schema or coverage failures are
-`FAIL`. It is not an investigation result and cannot approve a Live release by itself.
+## Security and known limits
 
-## Known limits
+- This release candidate is single-user software for local or controlled review environments; it has no authentication or multi-tenant boundary.
+- It provides investigation support, not investment advice, forecasts or trading execution.
+- Historical cases can be incomplete when point-in-time primary sources are unavailable.
+- Discovery coverage does not guarantee that every valid catalyst will be found. The product is expected to abstain when support is inadequate.
+- Provider entitlement, rate limits, schema drift and conflicting bars are explicit report states, never silently converted to “no catalyst”.
+- Evidence content is available only through a case-version-scoped endpoint; public summaries do not expose raw provider payloads or model internals.
+- Report security issues through [GitHub Security Advisories](https://github.com/ZhanlinCui/ASX-Investigation-Agent/security/advisories/new). See [SECURITY.md](SECURITY.md).
 
-- Confidence is a rule-governed evidence-strength band, not a probability, and remains `UNCALIBRATED`.
-- Tavily results remain discovery-only; primary causal support requires frozen issuer or user-supplied official material.
-- The 24 development cases are synthetic policy sentinels, not historical accuracy evidence.
-- The 12-case sealed holdout is `NOT_RUN` unless `ASX_EVAL_HOLDOUT_ROOT` is supplied.
-- The credentialed Live smoke gate is `NOT_RUN` in an unconfigured checkout.
-- External gold execution is `NOT_RUN` unless a hash-bound Gemini usage record and versioned AUD pricing schedule are available.
-- Recoverable runs resume from compatibility-checked durable stage checkpoints; incompatible checkpoints create an audited child version.
+## Documentation
+
+- [Product](docs/product.md) — users, workflow, capabilities and boundaries
+- [Product design](docs/product-design.md) — release workbench and interaction rules
+- [Architecture](docs/architecture.md) — Agent kernel, retrieval, evidence, memory, confidence and recovery
+- [Evaluation](docs/evaluation.md) — datasets, calibration and release gates
+- [Release status](docs/release-status.md) — verified code state and external prerequisites
+- [Master development plan](MASTER_DEVELOPMENT_PLAN.md) — delivered milestones and remaining approval work
+- [Documentation index](docs/README.md) — current docs, phase records and reference material
+
+## License status
+
+Copyright © 2026 Zhanlin Cui. No open-source license has been granted. You may inspect this repository, but reuse, redistribution and derivative works require explicit permission from the copyright holder.
