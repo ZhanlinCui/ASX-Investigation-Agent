@@ -8,7 +8,7 @@
 
 The Phase 5 bounded retrieval planner, governed primary-source promotion, retrieval-failure abstention, operational non-causal memory routing and audited public retrieval-plan surface are implemented. The final English workbench, repository homepage and consolidated product documentation are part of the release-candidate packaging milestone.
 
-Fresh release-candidate verification reports 332 Python tests, seven frontend tests, passing Python and frontend lint, a passing production build, 24/24 recorded policy sentinels, a passing documentation/secret/status audit and a passing clean-checkout recorded run. The authoritative command evidence is maintained in [`evals/results/final-release.md`](../evals/results/final-release.md).
+Fresh release-candidate verification reports 334 Python tests, seven frontend tests, passing Python and frontend lint, a passing production build, 24/24 recorded policy sentinels, a passing documentation/secret/status audit and a passing clean-checkout recorded run. The authoritative command evidence is maintained in [`evals/results/final-release.md`](../evals/results/final-release.md).
 
 ## Gate matrix
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -128,6 +129,7 @@ def test_ci_runs_every_local_release_gate() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "name: Release quality gates" in workflow
     for command in (
+        "python -m pip install --upgrade pip==25.3",
         "python -m ruff check src tests evals",
         "python -m compileall -q src",
         "python -m pytest -q",
@@ -137,3 +139,15 @@ def test_ci_runs_every_local_release_gate() -> None:
         "pnpm build",
     ):
         assert command in workflow
+
+
+def test_quick_start_upgrades_bootstrap_pip_before_editable_install() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    upgrade = readme.index(".venv/bin/python -m pip install --upgrade pip==25.3")
+    editable = readme.index(".venv/bin/python -m pip install -e '.[dev]'")
+    assert upgrade < editable
+
+
+def test_python_build_backend_is_reproducibly_pinned() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["build-system"]["requires"] == ["setuptools==75.8.2"]

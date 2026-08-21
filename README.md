@@ -96,7 +96,8 @@ git clone https://github.com/ZhanlinCui/ASX-Investigation-Agent.git
 cd ASX-Investigation-Agent
 
 python3.12 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
+.venv/bin/python -m pip install --upgrade pip==25.3
+.venv/bin/python -m pip install -e '.[dev]'
 pnpm --dir web install --frozen-lockfile
 
 cp .env.example .env

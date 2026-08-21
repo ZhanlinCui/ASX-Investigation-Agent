@@ -10,7 +10,7 @@ This is the single current release-status record. Historical evaluation files pr
 
 | Gate | Status | Fresh evidence |
 | --- | --- | --- |
-| Python suite | `PASS` | 332 tests passed; six third-party deprecation warnings |
+| Python suite | `PASS` | 334 tests passed; six third-party deprecation warnings |
 | Python compile | `PASS` | `compileall` completed for `src` |
 | Python lint | `PASS` | Ruff passed for `src`, `tests` and `evals` |
 | Recorded policy sentinels | `PASS` | 24/24 synthetic cases passed |
